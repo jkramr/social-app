@@ -1,5 +1,6 @@
 import {resolveConfig} from 'detox/internals'
 import {execSync} from 'child_process'
+import http from 'http'
 
 const platform = device.getPlatform()
 
@@ -69,6 +70,14 @@ export async function login(
   await element(by.id('loginNextButton')).tap()
 }
 
+export async function loginAsAlice() {
+  await element(by.id('e2eSignInAlice')).tap()
+}
+
+export async function loginAsBob() {
+  await element(by.id('e2eSignInBob')).tap()
+}
+
 async function openAppForDebugBuild(platform: string, opts: any) {
   const deepLinkUrl = // Local testing with packager
     /*process.env.EXPO_USE_UPDATES
@@ -96,10 +105,30 @@ async function openAppForDebugBuild(platform: string, opts: any) {
   await sleep(3000)
 }
 
-export async function createServer(path = '') {
-  const res = await fetch(`http://localhost:1986/${path}`, {method: 'POST'})
-  const resBody = await res.text()
-  return resBody
+export async function createServer(path = ''): Promise<string> {
+  return new Promise(function (resolve, reject) {
+    var req = http.request(
+      {
+        method: 'POST',
+        host: 'localhost',
+        port: 1986,
+        path: `/${path}`,
+      },
+      function (res) {
+        const body: Buffer[] = []
+        res.on('data', chunk => body.push(chunk))
+        res.on('end', function () {
+          try {
+            resolve(Buffer.concat(body).toString())
+          } catch (e) {
+            reject(e)
+          }
+        })
+      },
+    )
+    req.on('error', reject)
+    req.end()
+  })
 }
 
 const getDeepLinkUrl = (url: string) =>

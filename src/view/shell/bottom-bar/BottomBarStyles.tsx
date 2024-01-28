@@ -12,6 +12,10 @@ export const styles = StyleSheet.create({
     paddingLeft: 5,
     paddingRight: 10,
   },
+  bottomBarWeb: {
+    // @ts-ignore web-only
+    position: 'fixed',
+  },
   ctrl: {
     flex: 1,
     paddingTop: 13,
@@ -48,6 +52,9 @@ export const styles = StyleSheet.create({
   },
   homeIcon: {
     top: 0,
+  },
+  feedsIcon: {
+    top: -2,
   },
   searchIcon: {
     top: -2,

@@ -6,10 +6,12 @@ import {
 } from '@fortawesome/react-native-fontawesome'
 import {usePalette} from 'lib/hooks/usePalette'
 import {useAnalytics} from 'lib/analytics/analytics'
-import {isDesktopWeb} from 'platform/detection'
 import {usePhotoLibraryPermission} from 'lib/hooks/usePermissions'
 import {GalleryModel} from 'state/models/media/gallery'
 import {HITSLOP_10} from 'lib/constants'
+import {isNative} from 'platform/detection'
+import {useLingui} from '@lingui/react'
+import {msg} from '@lingui/macro'
 
 type Props = {
   gallery: GalleryModel
@@ -18,17 +20,18 @@ type Props = {
 export function SelectPhotoBtn({gallery}: Props) {
   const pal = usePalette('default')
   const {track} = useAnalytics()
+  const {_} = useLingui()
   const {requestPhotoAccessIfNeeded} = usePhotoLibraryPermission()
 
   const onPressSelectPhotos = useCallback(async () => {
     track('Composer:GalleryOpened')
 
-    if (!isDesktopWeb && !(await requestPhotoAccessIfNeeded())) {
+    if (isNative && !(await requestPhotoAccessIfNeeded())) {
       return
     }
 
     gallery.pick()
-  }, [track, gallery, requestPhotoAccessIfNeeded])
+  }, [track, requestPhotoAccessIfNeeded, gallery])
 
   return (
     <TouchableOpacity
@@ -37,8 +40,8 @@ export function SelectPhotoBtn({gallery}: Props) {
       style={styles.button}
       hitSlop={HITSLOP_10}
       accessibilityRole="button"
-      accessibilityLabel="Gallery"
-      accessibilityHint="Opens device photo gallery">
+      accessibilityLabel={_(msg`Gallery`)}
+      accessibilityHint={_(msg`Opens device photo gallery`)}>
       <FontAwesomeIcon
         icon={['far', 'image']}
         style={pal.link as FontAwesomeIconStyle}

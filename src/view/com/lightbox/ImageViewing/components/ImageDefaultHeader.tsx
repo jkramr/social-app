@@ -5,10 +5,10 @@
  * LICENSE file in the root directory of this source tree.
  *
  */
-
-import {createHitslop} from 'lib/constants'
 import React from 'react'
+import {createHitslop} from 'lib/constants'
 import {SafeAreaView, Text, TouchableOpacity, StyleSheet} from 'react-native'
+import {t} from '@lingui/macro'
 
 type Props = {
   onRequestClose: () => void
@@ -23,8 +23,8 @@ const ImageDefaultHeader = ({onRequestClose}: Props) => (
       onPress={onRequestClose}
       hitSlop={HIT_SLOP}
       accessibilityRole="button"
-      accessibilityLabel="Close image"
-      accessibilityHint="Closes viewer for header image"
+      accessibilityLabel={t`Close image`}
+      accessibilityHint={t`Closes viewer for header image`}
       onAccessibilityEscape={onRequestClose}>
       <Text style={styles.closeText}>✕</Text>
     </TouchableOpacity>
@@ -34,6 +34,7 @@ const ImageDefaultHeader = ({onRequestClose}: Props) => (
 const styles = StyleSheet.create({
   root: {
     alignItems: 'flex-end',
+    pointerEvents: 'box-none',
   },
   closeButton: {
     marginRight: 8,

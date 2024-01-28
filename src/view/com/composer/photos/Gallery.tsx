@@ -1,5 +1,5 @@
-import React from 'react'
-import {ImageStyle, Keyboard} from 'react-native'
+import React, {useState} from 'react'
+import {ImageStyle, Keyboard, LayoutChangeEvent} from 'react-native'
 import {GalleryModel} from 'state/models/media/gallery'
 import {observer} from 'mobx-react-lite'
 import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome'
@@ -7,25 +7,59 @@ import {s, colors} from 'lib/styles'
 import {StyleSheet, TouchableOpacity, View} from 'react-native'
 import {Image} from 'expo-image'
 import {Text} from 'view/com/util/text/Text'
-import {isDesktopWeb} from 'platform/detection'
-import {openAltTextModal} from 'lib/media/alt-text'
-import {useStores} from 'state/index'
+import {Dimensions} from 'lib/media/types'
 import {usePalette} from 'lib/hooks/usePalette'
+import {useWebMediaQueries} from 'lib/hooks/useWebMediaQueries'
+import {Trans, msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
+import {useModalControls} from '#/state/modals'
+import {isNative} from 'platform/detection'
 
-interface Props {
+const IMAGE_GAP = 8
+
+interface GalleryProps {
   gallery: GalleryModel
 }
 
-export const Gallery = observer(function ({gallery}: Props) {
-  const store = useStores()
+export const Gallery = (props: GalleryProps) => {
+  const [containerInfo, setContainerInfo] = useState<Dimensions | undefined>()
+
+  const onLayout = (evt: LayoutChangeEvent) => {
+    const {width, height} = evt.nativeEvent.layout
+    setContainerInfo({
+      width,
+      height,
+    })
+  }
+
+  return (
+    <View onLayout={onLayout}>
+      {containerInfo ? (
+        <GalleryInner {...props} containerInfo={containerInfo} />
+      ) : undefined}
+    </View>
+  )
+}
+
+interface GalleryInnerProps extends GalleryProps {
+  containerInfo: Dimensions
+}
+
+const GalleryInner = observer(function GalleryImpl({
+  gallery,
+  containerInfo,
+}: GalleryInnerProps) {
   const pal = usePalette('default')
+  const {_} = useLingui()
+  const {isMobile} = useWebMediaQueries()
+  const {openModal} = useModalControls()
 
   let side: number
 
   if (gallery.size === 1) {
     side = 250
   } else {
-    side = (isDesktopWeb ? 560 : 350) / gallery.size
+    side = (containerInfo.width - IMAGE_GAP * (gallery.size - 1)) / gallery.size
   }
 
   const imageStyle = {
@@ -33,14 +67,14 @@ export const Gallery = observer(function ({gallery}: Props) {
     width: side,
   }
 
-  const isOverflow = !isDesktopWeb && gallery.size > 2
+  const isOverflow = isMobile && gallery.size > 2
 
   const altTextControlStyle = isOverflow
     ? {
         left: 4,
         bottom: 4,
       }
-    : isDesktopWeb && gallery.size < 3
+    : !isMobile && gallery.size < 3
     ? {
         left: 8,
         top: 8,
@@ -60,7 +94,7 @@ export const Gallery = observer(function ({gallery}: Props) {
           right: 4,
           gap: 4,
         }
-      : isDesktopWeb && gallery.size < 3
+      : !isMobile && gallery.size < 3
       ? {
           top: 8,
           right: 8,
@@ -82,15 +116,18 @@ export const Gallery = observer(function ({gallery}: Props) {
             <TouchableOpacity
               testID="altTextButton"
               accessibilityRole="button"
-              accessibilityLabel="Add alt text"
+              accessibilityLabel={_(msg`Add alt text`)}
               accessibilityHint=""
               onPress={() => {
                 Keyboard.dismiss()
-                openAltTextModal(store, image)
+                openModal({
+                  name: 'alt-text-image',
+                  image,
+                })
               }}
               style={[styles.altTextControl, altTextControlStyle]}>
               <Text style={styles.altTextControlLabel} accessible={false}>
-                ALT
+                <Trans>ALT</Trans>
               </Text>
               {image.altText.length > 0 ? (
                 <FontAwesomeIcon
@@ -104,9 +141,19 @@ export const Gallery = observer(function ({gallery}: Props) {
               <TouchableOpacity
                 testID="editPhotoButton"
                 accessibilityRole="button"
-                accessibilityLabel="Edit image"
+                accessibilityLabel={_(msg`Edit image`)}
                 accessibilityHint=""
-                onPress={() => gallery.edit(image)}
+                onPress={() => {
+                  if (isNative) {
+                    gallery.crop(image)
+                  } else {
+                    openModal({
+                      name: 'edit-image',
+                      image,
+                      gallery,
+                    })
+                  }
+                }}
                 style={styles.imageControl}>
                 <FontAwesomeIcon
                   icon="pen"
@@ -117,7 +164,7 @@ export const Gallery = observer(function ({gallery}: Props) {
               <TouchableOpacity
                 testID="removePhotoButton"
                 accessibilityRole="button"
-                accessibilityLabel="Remove image"
+                accessibilityLabel={_(msg`Remove image`)}
                 accessibilityHint=""
                 onPress={() => gallery.remove(image)}
                 style={styles.imageControl}>
@@ -130,11 +177,14 @@ export const Gallery = observer(function ({gallery}: Props) {
             </View>
             <TouchableOpacity
               accessibilityRole="button"
-              accessibilityLabel="Add alt text"
+              accessibilityLabel={_(msg`Add alt text`)}
               accessibilityHint=""
               onPress={() => {
                 Keyboard.dismiss()
-                openAltTextModal(store, image)
+                openModal({
+                  name: 'alt-text-image',
+                  image,
+                })
               }}
               style={styles.altTextHiddenRegion}
             />
@@ -156,8 +206,10 @@ export const Gallery = observer(function ({gallery}: Props) {
           <FontAwesomeIcon icon="info" size={12} color={pal.colors.text} />
         </View>
         <Text type="sm" style={[pal.textLight, s.flex1]}>
-          Alt text describes images for blind and low-vision users, and helps
-          give context to everyone.
+          <Trans>
+            Alt text describes images for blind and low-vision users, and helps
+            give context to everyone.
+          </Trans>
         </Text>
       </View>
     </>
@@ -168,7 +220,7 @@ const styles = StyleSheet.create({
   gallery: {
     flex: 1,
     flexDirection: 'row',
-    gap: 8,
+    gap: IMAGE_GAP,
     marginTop: 16,
   },
   image: {

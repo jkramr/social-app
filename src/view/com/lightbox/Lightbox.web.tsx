@@ -1,45 +1,55 @@
 import React, {useCallback, useEffect, useState} from 'react'
 import {
   Image,
+  ImageStyle,
   TouchableOpacity,
   TouchableWithoutFeedback,
   StyleSheet,
   View,
   Pressable,
 } from 'react-native'
-import {observer} from 'mobx-react-lite'
-import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome'
-import {useStores} from 'state/index'
-import * as models from 'state/models/ui/shell'
+import {
+  FontAwesomeIcon,
+  FontAwesomeIconStyle,
+} from '@fortawesome/react-native-fontawesome'
 import {colors, s} from 'lib/styles'
 import ImageDefaultHeader from './ImageViewing/components/ImageDefaultHeader'
 import {Text} from '../util/text/Text'
+import {useLingui} from '@lingui/react'
+import {msg} from '@lingui/macro'
+import {
+  useLightbox,
+  useLightboxControls,
+  ImagesLightbox,
+  ProfileImageLightbox,
+} from '#/state/lightbox'
+import {useWebBodyScrollLock} from '#/lib/hooks/useWebBodyScrollLock'
 
 interface Img {
   uri: string
   alt?: string
 }
 
-export const Lightbox = observer(function Lightbox() {
-  const store = useStores()
+export function Lightbox() {
+  const {activeLightbox} = useLightbox()
+  const {closeLightbox} = useLightboxControls()
+  const isActive = !!activeLightbox
+  useWebBodyScrollLock(isActive)
 
-  const onClose = useCallback(() => store.shell.closeLightbox(), [store.shell])
-
-  if (!store.shell.isLightboxActive) {
+  if (!isActive) {
     return null
   }
 
-  const activeLightbox = store.shell.activeLightbox
   const initialIndex =
-    activeLightbox instanceof models.ImagesLightbox ? activeLightbox.index : 0
+    activeLightbox instanceof ImagesLightbox ? activeLightbox.index : 0
 
   let imgs: Img[] | undefined
-  if (activeLightbox instanceof models.ProfileImageLightbox) {
+  if (activeLightbox instanceof ProfileImageLightbox) {
     const opts = activeLightbox
-    if (opts.profileView.avatar) {
-      imgs = [{uri: opts.profileView.avatar}]
+    if (opts.profile.avatar) {
+      imgs = [{uri: opts.profile.avatar}]
     }
-  } else if (activeLightbox instanceof models.ImagesLightbox) {
+  } else if (activeLightbox instanceof ImagesLightbox) {
     const opts = activeLightbox
     imgs = opts.images
   }
@@ -49,9 +59,13 @@ export const Lightbox = observer(function Lightbox() {
   }
 
   return (
-    <LightboxInner imgs={imgs} initialIndex={initialIndex} onClose={onClose} />
+    <LightboxInner
+      imgs={imgs}
+      initialIndex={initialIndex}
+      onClose={closeLightbox}
+    />
   )
-})
+}
 
 function LightboxInner({
   imgs,
@@ -62,6 +76,7 @@ function LightboxInner({
   initialIndex: number
   onClose: () => void
 }) {
+  const {_} = useLingui()
   const [index, setIndex] = useState<number>(initialIndex)
   const [isAltExpanded, setAltExpanded] = useState(false)
 
@@ -101,14 +116,14 @@ function LightboxInner({
       <TouchableWithoutFeedback
         onPress={onClose}
         accessibilityRole="button"
-        accessibilityLabel="Close image viewer"
-        accessibilityHint="Exits image view"
+        accessibilityLabel={_(msg`Close image viewer`)}
+        accessibilityHint={_(msg`Exits image view`)}
         onAccessibilityEscape={onClose}>
         <View style={styles.imageCenterer}>
           <Image
             accessibilityIgnoresInvertColors
             source={imgs[index]}
-            style={styles.image}
+            style={styles.image as ImageStyle}
             accessibilityLabel={imgs[index].alt}
             accessibilityHint=""
           />
@@ -117,11 +132,11 @@ function LightboxInner({
               onPress={onPressLeft}
               style={[styles.btn, styles.leftBtn]}
               accessibilityRole="button"
-              accessibilityLabel="Previous image"
+              accessibilityLabel={_(msg`Previous image`)}
               accessibilityHint="">
               <FontAwesomeIcon
                 icon="angle-left"
-                style={styles.icon}
+                style={styles.icon as FontAwesomeIconStyle}
                 size={40}
               />
             </TouchableOpacity>
@@ -131,11 +146,11 @@ function LightboxInner({
               onPress={onPressRight}
               style={[styles.btn, styles.rightBtn]}
               accessibilityRole="button"
-              accessibilityLabel="Next image"
+              accessibilityLabel={_(msg`Next image`)}
               accessibilityHint="">
               <FontAwesomeIcon
                 icon="angle-right"
-                style={styles.icon}
+                style={styles.icon as FontAwesomeIconStyle}
                 size={40}
               />
             </TouchableOpacity>
@@ -145,9 +160,10 @@ function LightboxInner({
       {imgs[index].alt ? (
         <View style={styles.footer}>
           <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Expand alt text"
-            accessibilityHint="If alt text is long, toggles alt text expanded state"
+            accessibilityLabel={_(msg`Expand alt text`)}
+            accessibilityHint={_(
+              msg`If alt text is long, toggles alt text expanded state`,
+            )}
             onPress={() => {
               setAltExpanded(!isAltExpanded)
             }}>
@@ -169,7 +185,8 @@ function LightboxInner({
 
 const styles = StyleSheet.create({
   mask: {
-    position: 'absolute',
+    // @ts-ignore
+    position: 'fixed',
     top: 0,
     left: 0,
     width: '100%',

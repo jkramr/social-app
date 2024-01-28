@@ -12,26 +12,26 @@ import {
   SuggestionProps,
   SuggestionKeyDownProps,
 } from '@tiptap/suggestion'
-import {UserAutocompleteModel} from 'state/models/discovery/user-autocomplete'
+import {ActorAutocompleteFn} from '#/state/queries/actor-autocomplete'
 import {usePalette} from 'lib/hooks/usePalette'
 import {Text} from 'view/com/util/text/Text'
 import {UserAvatar} from 'view/com/util/UserAvatar'
 import {useGrapheme} from '../hooks/useGrapheme'
+import {Trans} from '@lingui/macro'
 
 interface MentionListRef {
   onKeyDown: (props: SuggestionKeyDownProps) => boolean
 }
 
 export function createSuggestion({
-  autocompleteView,
+  autocomplete,
 }: {
-  autocompleteView: UserAutocompleteModel
+  autocomplete: ActorAutocompleteFn
 }): Omit<SuggestionOptions, 'editor'> {
   return {
     async items({query}) {
-      autocompleteView.setActive(true)
-      await autocompleteView.setPrefix(query)
-      return autocompleteView.suggestions.slice(0, 8)
+      const suggestions = await autocomplete({query})
+      return suggestions.slice(0, 8)
     },
 
     render: () => {
@@ -94,7 +94,7 @@ export function createSuggestion({
 }
 
 const MentionList = forwardRef<MentionListRef, SuggestionProps>(
-  (props: SuggestionProps, ref) => {
+  function MentionListImpl(props: SuggestionProps, ref) {
     const [selectedIndex, setSelectedIndex] = useState(0)
     const pal = usePalette('default')
     const {getGraphemeString} = useGrapheme()
@@ -135,7 +135,7 @@ const MentionList = forwardRef<MentionListRef, SuggestionProps>(
           return true
         }
 
-        if (event.key === 'Enter') {
+        if (event.key === 'Enter' || event.key === 'Tab') {
           enterHandler()
           return true
         }
@@ -188,7 +188,7 @@ const MentionList = forwardRef<MentionListRef, SuggestionProps>(
             })
           ) : (
             <Text type="sm" style={[pal.text, styles.noResult]}>
-              No result
+              <Trans>No result</Trans>
             </Text>
           )}
         </View>

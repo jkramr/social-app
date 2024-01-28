@@ -1,61 +1,68 @@
 import React from 'react'
-import {View} from 'react-native'
-import {observer} from 'mobx-react-lite'
+import {StyleProp, TextStyle, View} from 'react-native'
+import {AppBskyActorDefs} from '@atproto/api'
 import {Button, ButtonType} from '../util/forms/Button'
-import {useStores} from 'state/index'
 import * as Toast from '../util/Toast'
-import {FollowState} from 'state/models/cache/my-follows'
+import {useProfileFollowMutationQueue} from '#/state/queries/profile'
+import {Shadow} from '#/state/cache/types'
+import {useLingui} from '@lingui/react'
+import {msg} from '@lingui/macro'
 
-export const FollowButton = observer(
-  ({
-    unfollowedType = 'inverted',
-    followedType = 'default',
-    did,
-    onToggleFollow,
-  }: {
-    unfollowedType?: ButtonType
-    followedType?: ButtonType
-    did: string
-    onToggleFollow?: (v: boolean) => void
-  }) => {
-    const store = useStores()
-    const followState = store.me.follows.getFollowState(did)
+export function FollowButton({
+  unfollowedType = 'inverted',
+  followedType = 'default',
+  profile,
+  labelStyle,
+}: {
+  unfollowedType?: ButtonType
+  followedType?: ButtonType
+  profile: Shadow<AppBskyActorDefs.ProfileViewBasic>
+  labelStyle?: StyleProp<TextStyle>
+}) {
+  const [queueFollow, queueUnfollow] = useProfileFollowMutationQueue(profile)
+  const {_} = useLingui()
 
-    if (followState === FollowState.Unknown) {
-      return <View />
-    }
-
-    const onToggleFollowInner = async () => {
-      const updatedFollowState = await store.me.follows.fetchFollowState(did)
-      if (updatedFollowState === FollowState.Following) {
-        try {
-          await store.agent.deleteFollow(store.me.follows.getFollowUri(did))
-          store.me.follows.removeFollow(did)
-          onToggleFollow?.(false)
-        } catch (e: any) {
-          store.log.error('Failed to delete follow', e)
-          Toast.show('An issue occurred, please try again.')
-        }
-      } else if (updatedFollowState === FollowState.NotFollowing) {
-        try {
-          const res = await store.agent.follow(did)
-          store.me.follows.addFollow(did, res.uri)
-          onToggleFollow?.(true)
-        } catch (e: any) {
-          store.log.error('Failed to create follow', e)
-          Toast.show('An issue occurred, please try again.')
-        }
+  const onPressFollow = async () => {
+    try {
+      await queueFollow()
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') {
+        Toast.show(_(msg`An issue occurred, please try again.`))
       }
     }
+  }
 
+  const onPressUnfollow = async () => {
+    try {
+      await queueUnfollow()
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') {
+        Toast.show(_(msg`An issue occurred, please try again.`))
+      }
+    }
+  }
+
+  if (!profile.viewer) {
+    return <View />
+  }
+
+  if (profile.viewer.following) {
     return (
       <Button
-        type={
-          followState === FollowState.Following ? followedType : unfollowedType
-        }
-        onPress={onToggleFollowInner}
-        label={followState === FollowState.Following ? 'Unfollow' : 'Follow'}
+        type={followedType}
+        labelStyle={labelStyle}
+        onPress={onPressUnfollow}
+        label={_(msg({message: 'Unfollow', context: 'action'}))}
       />
     )
-  },
-)
+  } else {
+    return (
+      <Button
+        type={unfollowedType}
+        labelStyle={labelStyle}
+        onPress={onPressFollow}
+        label={_(msg({message: 'Follow', context: 'action'}))}
+      />
+    )
+  }
+}

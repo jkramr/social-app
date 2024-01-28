@@ -1,6 +1,7 @@
 import {AtUri} from '@atproto/api'
-import {PROD_SERVICE} from 'state/index'
+import {PROD_SERVICE} from 'lib/constants'
 import TLDs from 'tlds'
+import psl from 'psl'
 
 export function isValidDomain(str: string): boolean {
   return !!TLDs.find(tld => {
@@ -30,7 +31,7 @@ export function toNiceDomain(url: string): string {
     if (`https://${urlp.host}` === PROD_SERVICE) {
       return 'Bluesky Social'
     }
-    return urlp.host
+    return urlp.host ? urlp.host : url
   } catch (e) {
     return url
   }
@@ -42,15 +43,12 @@ export function toShortUrl(url: string): string {
     if (urlp.protocol !== 'http:' && urlp.protocol !== 'https:') {
       return url
     }
-    const shortened =
-      urlp.host +
-      (urlp.pathname === '/' ? '' : urlp.pathname) +
-      urlp.search +
-      urlp.hash
-    if (shortened.length > 30) {
-      return shortened.slice(0, 27) + '...'
+    const path =
+      (urlp.pathname === '/' ? '' : urlp.pathname) + urlp.search + urlp.hash
+    if (path.length > 15) {
+      return urlp.host + path.slice(0, 13) + '...'
     }
-    return shortened ? shortened : url
+    return urlp.host + path
   } catch (e) {
     return url
   }
@@ -132,31 +130,93 @@ export function listUriToHref(url: string): string {
   }
 }
 
-export function getYoutubeVideoId(link: string): string | undefined {
-  let url
+export function feedUriToHref(url: string): string {
   try {
-    url = new URL(link)
-  } catch (e) {
-    return undefined
+    const {hostname, rkey} = new AtUri(url)
+    return `/profile/${hostname}/feed/${rkey}`
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Checks if the label in the post text matches the host of the link facet.
+ *
+ * Hosts are case-insensitive, so should be lowercase for comparison.
+ * @see https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2
+ */
+export function linkRequiresWarning(uri: string, label: string) {
+  const labelDomain = labelToDomain(label)
+
+  let urip
+  try {
+    urip = new URL(uri)
+  } catch {
+    return true
   }
 
-  if (
-    url.hostname !== 'www.youtube.com' &&
-    url.hostname !== 'youtube.com' &&
-    url.hostname !== 'youtu.be'
-  ) {
-    return undefined
-  }
-  if (url.hostname === 'youtu.be') {
-    const videoId = url.pathname.split('/')[1]
-    if (!videoId) {
-      return undefined
+  const host = urip.hostname.toLowerCase()
+
+  if (host === 'bsky.app') {
+    // if this is a link to internal content,
+    // warn if it represents itself as a URL to another app
+    if (
+      labelDomain &&
+      labelDomain !== 'bsky.app' &&
+      isPossiblyAUrl(labelDomain)
+    ) {
+      return true
     }
-    return videoId
+    return false
+  } else {
+    // if this is a link to external content,
+    // warn if the label doesnt match the target
+    if (!labelDomain) {
+      return true
+    }
+    return labelDomain !== host
   }
-  const videoId = url.searchParams.get('v') as string
-  if (!videoId) {
+}
+
+/**
+ * Returns a lowercase domain hostname if the label is a valid URL.
+ *
+ * Hosts are case-insensitive, so should be lowercase for comparison.
+ * @see https://www.rfc-editor.org/rfc/rfc3986#section-3.2.2
+ */
+export function labelToDomain(label: string): string | undefined {
+  // any spaces just immediately consider the label a non-url
+  if (/\s/.test(label)) {
     return undefined
   }
-  return videoId
+  try {
+    return new URL(label).hostname.toLowerCase()
+  } catch {}
+  try {
+    return new URL('https://' + label).hostname.toLowerCase()
+  } catch {}
+  return undefined
+}
+
+export function isPossiblyAUrl(str: string): boolean {
+  str = str.trim()
+  if (str.startsWith('http://')) {
+    return true
+  }
+  if (str.startsWith('https://')) {
+    return true
+  }
+  const [firstWord] = str.split(/[\s\/]/)
+  return isValidDomain(firstWord)
+}
+
+export function splitApexDomain(hostname: string): [string, string] {
+  const hostnamep = psl.parse(hostname)
+  if (hostnamep.error || !hostnamep.listed || !hostnamep.domain) {
+    return ['', hostname]
+  }
+  return [
+    hostnamep.subdomain ? `${hostnamep.subdomain}.` : '',
+    hostnamep.domain,
+  ]
 }

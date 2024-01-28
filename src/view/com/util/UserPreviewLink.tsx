@@ -1,9 +1,10 @@
 import React from 'react'
 import {Pressable, StyleProp, ViewStyle} from 'react-native'
-import {useStores} from 'state/index'
 import {Link} from './Link'
-import {isDesktopWeb} from 'platform/detection'
+import {isAndroid, isWeb} from 'platform/detection'
 import {makeProfileLink} from 'lib/routes/links'
+import {useModalControls} from '#/state/modals'
+import {usePrefetchProfileQuery} from '#/state/queries/profile'
 
 interface UserPreviewLinkProps {
   did: string
@@ -13,11 +14,17 @@ interface UserPreviewLinkProps {
 export function UserPreviewLink(
   props: React.PropsWithChildren<UserPreviewLinkProps>,
 ) {
-  const store = useStores()
+  const {openModal} = useModalControls()
+  const prefetchProfileQuery = usePrefetchProfileQuery()
 
-  if (isDesktopWeb) {
+  if (isWeb || isAndroid) {
     return (
       <Link
+        onPointerEnter={() => {
+          if (isWeb) {
+            prefetchProfileQuery(props.did)
+          }
+        }}
         href={makeProfileLink(props)}
         title={props.handle}
         asAnchor
@@ -29,7 +36,7 @@ export function UserPreviewLink(
   return (
     <Pressable
       onPress={() =>
-        store.shell.openModal({
+        openModal({
           name: 'profile-preview',
           did: props.did,
         })

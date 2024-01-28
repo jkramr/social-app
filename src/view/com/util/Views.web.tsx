@@ -14,9 +14,7 @@
 
 import React from 'react'
 import {
-  FlatList as RNFlatList,
   FlatListProps,
-  ScrollView as RNScrollView,
   ScrollViewProps,
   StyleSheet,
   View,
@@ -24,20 +22,34 @@ import {
 } from 'react-native'
 import {addStyle} from 'lib/styles'
 import {usePalette} from 'lib/hooks/usePalette'
+import {useWebMediaQueries} from 'lib/hooks/useWebMediaQueries'
+import Animated from 'react-native-reanimated'
 
 interface AddedProps {
-  desktopFixedHeight?: boolean
+  desktopFixedHeight?: boolean | number
 }
 
 export function CenteredView({
   style,
+  sideBorders,
   ...props
-}: React.PropsWithChildren<ViewProps>) {
-  style = addStyle(style, styles.container)
+}: React.PropsWithChildren<ViewProps & {sideBorders?: boolean}>) {
+  const pal = usePalette('default')
+  const {isMobile} = useWebMediaQueries()
+  if (!isMobile) {
+    style = addStyle(style, styles.container)
+  }
+  if (sideBorders) {
+    style = addStyle(style, {
+      borderLeftWidth: 1,
+      borderRightWidth: 1,
+    })
+    style = addStyle(style, pal.border)
+  }
   return <View style={style} {...props} />
 }
 
-export const FlatList = React.forwardRef(function <ItemT>(
+export const FlatList_INTERNAL = React.forwardRef(function FlatListImpl<ItemT>(
   {
     contentContainerStyle,
     style,
@@ -45,13 +57,16 @@ export const FlatList = React.forwardRef(function <ItemT>(
     desktopFixedHeight,
     ...props
   }: React.PropsWithChildren<FlatListProps<ItemT> & AddedProps>,
-  ref: React.Ref<RNFlatList>,
+  ref: React.Ref<Animated.FlatList<ItemT>>,
 ) {
   const pal = usePalette('default')
-  contentContainerStyle = addStyle(
-    contentContainerStyle,
-    styles.containerScroll,
-  )
+  const {isMobile} = useWebMediaQueries()
+  if (!isMobile) {
+    contentContainerStyle = addStyle(
+      contentContainerStyle,
+      styles.containerScroll,
+    )
+  }
   if (contentOffset && contentOffset?.y !== 0) {
     // NOTE
     // we use paddingTop & contentOffset to space around the floating header
@@ -66,15 +81,36 @@ export const FlatList = React.forwardRef(function <ItemT>(
     })
   }
   if (desktopFixedHeight) {
-    style = addStyle(style, styles.fixedHeight)
+    if (typeof desktopFixedHeight === 'number') {
+      // @ts-ignore Web only -prf
+      style = addStyle(style, {
+        height: `calc(100vh - ${desktopFixedHeight}px)`,
+      })
+    } else {
+      style = addStyle(style, styles.fixedHeight)
+    }
+    if (!isMobile) {
+      // NOTE
+      // react native web produces *three* wrapping divs
+      // the first two use the `style` prop and the innermost uses the
+      // `contentContainerStyle`. Unfortunately the stable-gutter style
+      // needs to be applied to only the "middle" of these. To hack
+      // around this, we set data-stable-gutters which can then be
+      // styled in our external CSS.
+      // -prf
+      // @ts-ignore web only -prf
+      props.dataSet = props.dataSet || {}
+      // @ts-ignore web only -prf
+      props.dataSet.stableGutters = '1'
+    }
   }
   return (
-    <RNFlatList
+    <Animated.FlatList
       ref={ref}
       contentContainerStyle={[
+        styles.contentContainer,
         contentContainerStyle,
         pal.border,
-        styles.contentContainer,
       ]}
       style={style}
       contentOffset={contentOffset}
@@ -83,23 +119,27 @@ export const FlatList = React.forwardRef(function <ItemT>(
   )
 })
 
-export const ScrollView = React.forwardRef(function (
+export const ScrollView = React.forwardRef(function ScrollViewImpl(
   {contentContainerStyle, ...props}: React.PropsWithChildren<ScrollViewProps>,
-  ref: React.Ref<RNScrollView>,
+  ref: React.Ref<Animated.ScrollView>,
 ) {
   const pal = usePalette('default')
 
-  contentContainerStyle = addStyle(
-    contentContainerStyle,
-    styles.containerScroll,
-  )
+  const {isMobile} = useWebMediaQueries()
+  if (!isMobile) {
+    contentContainerStyle = addStyle(
+      contentContainerStyle,
+      styles.containerScroll,
+    )
+  }
   return (
-    <RNScrollView
+    <Animated.ScrollView
       contentContainerStyle={[
+        styles.contentContainer,
         contentContainerStyle,
         pal.border,
-        styles.contentContainer,
       ]}
+      // @ts-ignore something is wrong with the reanimated types -prf
       ref={ref}
       {...props}
     />
@@ -110,6 +150,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     borderLeftWidth: 1,
     borderRightWidth: 1,
+    // @ts-ignore web only
     minHeight: '100vh',
   },
   container: {
@@ -125,7 +166,7 @@ const styles = StyleSheet.create({
     marginRight: 'auto',
   },
   fixedHeight: {
+    // @ts-ignore web only
     height: '100vh',
-    scrollbarGutter: 'stable both-edges',
   },
 })

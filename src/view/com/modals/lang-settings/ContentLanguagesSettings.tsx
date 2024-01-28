@@ -1,22 +1,31 @@
 import React from 'react'
 import {StyleSheet, View} from 'react-native'
 import {ScrollView} from '../util'
-import {useStores} from 'state/index'
 import {Text} from '../../util/text/Text'
 import {usePalette} from 'lib/hooks/usePalette'
-import {isDesktopWeb, deviceLocales} from 'platform/detection'
+import {useWebMediaQueries} from 'lib/hooks/useWebMediaQueries'
+import {deviceLocales} from 'platform/detection'
 import {LANGUAGES, LANGUAGES_MAP_CODE2} from '../../../../locale/languages'
 import {LanguageToggle} from './LanguageToggle'
 import {ConfirmLanguagesButton} from './ConfirmLanguagesButton'
+import {Trans} from '@lingui/macro'
+import {useModalControls} from '#/state/modals'
+import {
+  useLanguagePrefs,
+  useLanguagePrefsApi,
+} from '#/state/preferences/languages'
 
 export const snapPoints = ['100%']
 
 export function Component({}: {}) {
-  const store = useStores()
+  const {closeModal} = useModalControls()
+  const langPrefs = useLanguagePrefs()
+  const setLangPrefs = useLanguagePrefsApi()
   const pal = usePalette('default')
+  const {isMobile} = useWebMediaQueries()
   const onPressDone = React.useCallback(() => {
-    store.shell.closeModal()
-  }, [store])
+    closeModal()
+  }, [closeModal])
 
   const languages = React.useMemo(() => {
     const langs = LANGUAGES.filter(
@@ -27,33 +36,50 @@ export function Component({}: {}) {
     // sort so that device & selected languages are on top, then alphabetically
     langs.sort((a, b) => {
       const hasA =
-        store.preferences.hasContentLanguage(a.code2) ||
+        langPrefs.contentLanguages.includes(a.code2) ||
         deviceLocales.includes(a.code2)
       const hasB =
-        store.preferences.hasContentLanguage(b.code2) ||
+        langPrefs.contentLanguages.includes(b.code2) ||
         deviceLocales.includes(b.code2)
       if (hasA === hasB) return a.name.localeCompare(b.name)
       if (hasA) return -1
       return 1
     })
     return langs
-  }, [store])
+  }, [langPrefs])
 
   const onPress = React.useCallback(
     (code2: string) => {
-      store.preferences.toggleContentLanguage(code2)
+      setLangPrefs.toggleContentLanguage(code2)
     },
-    [store],
+    [setLangPrefs],
   )
 
   return (
-    <View testID="contentLanguagesModal" style={[pal.view, styles.container]}>
-      <Text style={[pal.text, styles.title]}>Content Languages</Text>
+    <View
+      testID="contentLanguagesModal"
+      style={[
+        pal.view,
+        styles.container,
+        // @ts-ignore vh is web only
+        isMobile
+          ? {
+              paddingTop: 20,
+            }
+          : {
+              maxHeight: '90vh',
+            },
+      ]}>
+      <Text style={[pal.text, styles.title]}>
+        <Trans>Content Languages</Trans>
+      </Text>
       <Text style={[pal.text, styles.description]}>
-        Which languages would you like to see in your algorithmic feeds?
+        <Trans>
+          Which languages would you like to see in your algorithmic feeds?
+        </Trans>
       </Text>
       <Text style={[pal.textLight, styles.description]}>
-        Leave them all unchecked to see any language.
+        <Trans>Leave them all unchecked to see any language.</Trans>
       </Text>
       <ScrollView style={styles.scrollContainer}>
         {languages.map(lang => (
@@ -67,7 +93,11 @@ export function Component({}: {}) {
             }}
           />
         ))}
-        <View style={styles.bottomSpacer} />
+        <View
+          style={{
+            height: isMobile ? 60 : 0,
+          }}
+        />
       </ScrollView>
       <ConfirmLanguagesButton onPress={onPressDone} />
     </View>
@@ -77,7 +107,6 @@ export function Component({}: {}) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 20,
   },
   title: {
     textAlign: 'center',
@@ -93,8 +122,5 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flex: 1,
     paddingHorizontal: 10,
-  },
-  bottomSpacer: {
-    height: isDesktopWeb ? 0 : 60,
   },
 })

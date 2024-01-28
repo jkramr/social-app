@@ -1,6 +1,5 @@
 import React, {useCallback, useMemo} from 'react'
 import {StyleSheet, Keyboard} from 'react-native'
-import {observer} from 'mobx-react-lite'
 import {
   FontAwesomeIcon,
   FontAwesomeIconStyle,
@@ -12,14 +11,24 @@ import {
   DropdownItemButton,
 } from 'view/com/util/forms/DropdownButton'
 import {usePalette} from 'lib/hooks/usePalette'
-import {useStores} from 'state/index'
 import {isNative} from 'platform/detection'
 import {codeToLanguageName} from '../../../../locale/helpers'
-import {deviceLocales} from 'platform/detection'
+import {useModalControls} from '#/state/modals'
+import {
+  useLanguagePrefs,
+  useLanguagePrefsApi,
+  toPostLanguages,
+  hasPostLanguage,
+} from '#/state/preferences/languages'
+import {t, msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
 
-export const SelectLangBtn = observer(function SelectLangBtn() {
+export function SelectLangBtn() {
   const pal = usePalette('default')
-  const store = useStores()
+  const {_} = useLingui()
+  const {openModal} = useModalControls()
+  const langPrefs = useLanguagePrefs()
+  const setLangPrefs = useLanguagePrefsApi()
 
   const onPressMore = useCallback(async () => {
     if (isNative) {
@@ -27,50 +36,63 @@ export const SelectLangBtn = observer(function SelectLangBtn() {
         Keyboard.dismiss()
       }
     }
-    store.shell.openModal({name: 'post-languages-settings'})
-  }, [store])
+    openModal({name: 'post-languages-settings'})
+  }, [openModal])
 
-  const postLanguagesPref = store.preferences.postLanguages
+  const postLanguagesPref = toPostLanguages(langPrefs.postLanguage)
   const items: DropdownItem[] = useMemo(() => {
     let arr: DropdownItemButton[] = []
 
-    const add = (langCode: string) => {
-      const langName = codeToLanguageName(langCode)
+    function add(commaSeparatedLangCodes: string) {
+      const langCodes = commaSeparatedLangCodes.split(',')
+      const langName = langCodes
+        .map(code => codeToLanguageName(code))
+        .join(' + ')
+
+      /*
+       * Filter out any duplicates
+       */
       if (arr.find((item: DropdownItemButton) => item.label === langName)) {
         return
       }
+
       arr.push({
-        icon: store.preferences.hasPostLanguage(langCode)
-          ? ['fas', 'circle-check']
-          : ['far', 'circle'],
+        icon:
+          langCodes.every(code =>
+            hasPostLanguage(langPrefs.postLanguage, code),
+          ) && langCodes.length === postLanguagesPref.length
+            ? ['fas', 'circle-dot']
+            : ['far', 'circle'],
         label: langName,
         onPress() {
-          store.preferences.setPostLanguage(langCode)
+          setLangPrefs.setPostLanguage(commaSeparatedLangCodes)
         },
       })
     }
 
-    for (const lang of postLanguagesPref) {
+    if (postLanguagesPref.length) {
+      /*
+       * Re-join here after sanitization bc postLanguageHistory is an array of
+       * comma-separated strings too
+       */
+      add(langPrefs.postLanguage)
+    }
+
+    // comma-separted strings of lang codes that have been used in the past
+    for (const lang of langPrefs.postLanguageHistory) {
       add(lang)
     }
-    for (const lang of deviceLocales) {
-      add(lang)
-    }
-    add('en') // english
-    add('ja') // japanese
-    add('pt') // portugese
-    add('de') // german
 
     return [
-      {heading: true, label: 'Post language'},
+      {heading: true, label: t`Post language`},
       ...arr.slice(0, 6),
       {sep: true},
       {
-        label: 'Other...',
+        label: t`Other...`,
         onPress: onPressMore,
       },
     ]
-  }, [store.preferences, postLanguagesPref, onPressMore])
+  }, [onPressMore, langPrefs, setLangPrefs, postLanguagesPref])
 
   return (
     <DropdownButton
@@ -79,13 +101,11 @@ export const SelectLangBtn = observer(function SelectLangBtn() {
       items={items}
       openUpwards
       style={styles.button}
-      accessibilityLabel="Language selection"
+      accessibilityLabel={_(msg`Language selection`)}
       accessibilityHint="">
-      {store.preferences.postLanguages.length > 0 ? (
+      {postLanguagesPref.length > 0 ? (
         <Text type="lg-bold" style={[pal.link, styles.label]} numberOfLines={1}>
-          {store.preferences.postLanguages
-            .map(lang => codeToLanguageName(lang))
-            .join(', ')}
+          {postLanguagesPref.map(lang => codeToLanguageName(lang)).join(', ')}
         </Text>
       ) : (
         <FontAwesomeIcon
@@ -96,7 +116,7 @@ export const SelectLangBtn = observer(function SelectLangBtn() {
       )}
     </DropdownButton>
   )
-})
+}
 
 const styles = StyleSheet.create({
   button: {

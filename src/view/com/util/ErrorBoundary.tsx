@@ -1,6 +1,8 @@
 import React, {Component, ErrorInfo, ReactNode} from 'react'
 import {ErrorScreen} from './error/ErrorScreen'
 import {CenteredView} from './Views'
+import {t} from '@lingui/macro'
+import {logger} from '#/logger'
 
 interface Props {
   children?: ReactNode
@@ -22,16 +24,16 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo)
+    logger.error(error, {errorInfo})
   }
 
   public render() {
     if (this.state.hasError) {
       return (
-        <CenteredView>
+        <CenteredView style={{height: '100%', flex: 1}}>
           <ErrorScreen
-            title="Oh no!"
-            message="There was an unexpected issue in the application. Please let us know if this happened to you!"
+            title={t`Oh no!`}
+            message={t`There was an unexpected issue in the application. Please let us know if this happened to you!`}
             details={this.state.error.toString()}
           />
         </CenteredView>

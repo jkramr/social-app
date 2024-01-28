@@ -1,5 +1,10 @@
-import React, {ReactNode, createContext, useContext, useMemo} from 'react'
-import {TextStyle, useColorScheme, ViewStyle} from 'react-native'
+import React, {ReactNode, createContext, useContext} from 'react'
+import {
+  TextStyle,
+  useColorScheme,
+  ViewStyle,
+  ColorSchemeName,
+} from 'react-native'
 import {darkTheme, defaultTheme} from './themes'
 
 export type ColorScheme = 'light' | 'dark'
@@ -86,19 +91,18 @@ export const ThemeContext = createContext<Theme>(defaultTheme)
 
 export const useTheme = () => useContext(ThemeContext)
 
+function getTheme(theme: ColorSchemeName) {
+  return theme === 'dark' ? darkTheme : defaultTheme
+}
+
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   theme,
   children,
 }) => {
-  const colorSchemeFromRN = useColorScheme()
+  const colorScheme = useColorScheme()
+  const themeValue = getTheme(theme === 'system' ? colorScheme : theme)
 
-  // if theme is 'system', use the device's configured color scheme
-  let colorScheme = theme === 'system' ? colorSchemeFromRN : theme
-
-  const value = useMemo(
-    () => (colorScheme === 'dark' ? darkTheme : defaultTheme),
-    [colorScheme],
+  return (
+    <ThemeContext.Provider value={themeValue}>{children}</ThemeContext.Provider>
   )
-
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }

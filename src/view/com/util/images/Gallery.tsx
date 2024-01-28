@@ -1,7 +1,9 @@
 import {AppBskyEmbedImages} from '@atproto/api'
 import React, {ComponentProps, FC} from 'react'
-import {StyleSheet, Text, TouchableOpacity, View} from 'react-native'
+import {StyleSheet, Text, Pressable, View} from 'react-native'
 import {Image} from 'expo-image'
+import {msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
 
 type EventFunction = (index: number) => void
 
@@ -14,8 +16,6 @@ interface GalleryItemProps {
   imageStyle: ComponentProps<typeof Image>['style']
 }
 
-const DELAY_PRESS_IN = 500
-
 export const GalleryItem: FC<GalleryItemProps> = ({
   images,
   index,
@@ -24,27 +24,27 @@ export const GalleryItem: FC<GalleryItemProps> = ({
   onPressIn,
   onLongPress,
 }) => {
+  const {_} = useLingui()
   const image = images[index]
-
   return (
-    <View>
-      <TouchableOpacity
-        delayPressIn={DELAY_PRESS_IN}
+    <View style={styles.fullWidth}>
+      <Pressable
         onPress={onPress ? () => onPress(index) : undefined}
         onPressIn={onPressIn ? () => onPressIn(index) : undefined}
         onLongPress={onLongPress ? () => onLongPress(index) : undefined}
+        style={styles.fullWidth}
         accessibilityRole="button"
-        accessibilityLabel={image.alt || 'Image'}
+        accessibilityLabel={image.alt || _(msg`Image`)}
         accessibilityHint="">
         <Image
           source={{uri: image.thumb}}
-          style={imageStyle}
+          style={[styles.image, imageStyle]}
           accessible={true}
           accessibilityLabel={image.alt}
           accessibilityHint=""
           accessibilityIgnoresInvertColors
         />
-      </TouchableOpacity>
+      </Pressable>
       {image.alt === '' ? null : (
         <View style={styles.altContainer}>
           <Text style={styles.alt} accessible={false}>
@@ -57,14 +57,21 @@ export const GalleryItem: FC<GalleryItemProps> = ({
 }
 
 const styles = StyleSheet.create({
+  fullWidth: {
+    flex: 1,
+  },
+  image: {
+    flex: 1,
+    borderRadius: 4,
+  },
   altContainer: {
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 3,
     position: 'absolute',
-    left: 6,
-    bottom: 6,
+    left: 8,
+    bottom: 8,
   },
   alt: {
     color: 'white',

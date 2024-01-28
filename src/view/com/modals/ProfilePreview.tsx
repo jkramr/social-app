@@ -1,89 +1,134 @@
-import React, {useState, useEffect, useCallback} from 'react'
-import {StyleSheet, View} from 'react-native'
-import {observer} from 'mobx-react-lite'
-import {useNavigation, StackActions} from '@react-navigation/native'
-import {Text} from '../util/text/Text'
-import {useStores} from 'state/index'
-import {ProfileModel} from 'state/models/content/profile'
+import React, {useState, useEffect} from 'react'
+import {ActivityIndicator, StyleSheet, View} from 'react-native'
+import {AppBskyActorDefs, ModerationOpts, moderateProfile} from '@atproto/api'
+import {ThemedText} from '../util/text/ThemedText'
 import {usePalette} from 'lib/hooks/usePalette'
 import {useAnalytics} from 'lib/analytics/analytics'
 import {ProfileHeader} from '../profile/ProfileHeader'
-import {Button} from '../util/forms/Button'
-import {NavigationProp} from 'lib/routes/types'
+import {InfoCircleIcon} from 'lib/icons'
+import {useNavigationState} from '@react-navigation/native'
+import {s} from 'lib/styles'
+import {useModerationOpts} from '#/state/queries/preferences'
+import {useProfileQuery} from '#/state/queries/profile'
+import {ErrorScreen} from '../util/error/ErrorScreen'
+import {CenteredView} from '../util/Views'
+import {cleanError} from '#/lib/strings/errors'
+import {useProfileShadow} from '#/state/cache/profile-shadow'
+import {Trans, msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
 
-export const snapPoints = [560]
+export const snapPoints = [520, '100%']
 
-export const Component = observer(({did}: {did: string}) => {
-  const store = useStores()
+export function Component({did}: {did: string}) {
   const pal = usePalette('default')
-  const palInverted = usePalette('inverted')
-  const navigation = useNavigation<NavigationProp>()
-  const [model] = useState(new ProfileModel(store, {actor: did}))
+  const {_} = useLingui()
+  const moderationOpts = useModerationOpts()
+  const {
+    data: profile,
+    error: profileError,
+    refetch: refetchProfile,
+    isFetching: isFetchingProfile,
+  } = useProfileQuery({
+    did: did,
+  })
+
+  if (isFetchingProfile || !moderationOpts) {
+    return (
+      <CenteredView style={[pal.view, s.flex1]}>
+        <ProfileHeader
+          profile={null}
+          moderation={null}
+          isProfilePreview={true}
+        />
+      </CenteredView>
+    )
+  }
+  if (profileError) {
+    return (
+      <ErrorScreen
+        title={_(msg`Oops!`)}
+        message={cleanError(profileError)}
+        onPressTryAgain={refetchProfile}
+      />
+    )
+  }
+  if (profile && moderationOpts) {
+    return <ComponentLoaded profile={profile} moderationOpts={moderationOpts} />
+  }
+  // should never happen
+  return (
+    <ErrorScreen
+      title={_(msg`Oops!`)}
+      message={_(msg`Something went wrong and we're not sure what.`)}
+      onPressTryAgain={refetchProfile}
+    />
+  )
+}
+
+function ComponentLoaded({
+  profile: profileUnshadowed,
+  moderationOpts,
+}: {
+  profile: AppBskyActorDefs.ProfileViewDetailed
+  moderationOpts: ModerationOpts
+}) {
+  const pal = usePalette('default')
+  const profile = useProfileShadow(profileUnshadowed)
   const {screen} = useAnalytics()
+  const moderation = React.useMemo(
+    () => moderateProfile(profile, moderationOpts),
+    [profile, moderationOpts],
+  )
+
+  // track the navigator state to detect if a page-load occurred
+  const navState = useNavigationState(state => state)
+  const [initNavState] = useState(navState)
+  const isLoading = initNavState !== navState
 
   useEffect(() => {
     screen('Profile:Preview')
-    model.setup()
-  }, [model, screen])
-
-  const onPressViewProfile = useCallback(() => {
-    navigation.dispatch(StackActions.push('Profile', {name: model.handle}))
-    store.shell.closeModal()
-  }, [navigation, store, model])
+  }, [screen])
 
   return (
-    <View style={pal.view}>
-      <View style={styles.headerWrapper}>
-        <ProfileHeader view={model} hideBackButton onRefreshAll={() => {}} />
+    <View testID="profilePreview" style={[pal.view, s.flex1]}>
+      <View style={[styles.headerWrapper]}>
+        <ProfileHeader
+          profile={profile}
+          moderation={moderation}
+          hideBackButton
+          isProfilePreview
+        />
       </View>
-      <View style={[styles.buttonsContainer, pal.view]}>
-        <View style={styles.buttons}>
-          <Button
-            type="inverted"
-            style={[styles.button, styles.buttonWide]}
-            onPress={onPressViewProfile}
-            accessibilityLabel="View profile"
-            accessibilityHint="">
-            <Text type="button-lg" style={palInverted.text}>
-              View Profile
-            </Text>
-          </Button>
-          <Button
-            type="default"
-            style={styles.button}
-            onPress={() => store.shell.closeModal()}
-            accessibilityLabel="Close this preview"
-            accessibilityHint="">
-            <Text type="button-lg" style={pal.text}>
-              Close
-            </Text>
-          </Button>
+      <View style={[styles.hintWrapper, pal.view]}>
+        <View style={styles.hint}>
+          {isLoading ? (
+            <ActivityIndicator />
+          ) : (
+            <>
+              <InfoCircleIcon size={21} style={pal.textLight} />
+              <ThemedText type="xl" fg="light">
+                <Trans>Swipe up to see more</Trans>
+              </ThemedText>
+            </>
+          )}
         </View>
       </View>
     </View>
   )
-})
+}
 
 const styles = StyleSheet.create({
   headerWrapper: {
     height: 440,
   },
-  buttonsContainer: {
-    height: 120,
+  hintWrapper: {
+    height: 80,
   },
-  buttons: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingTop: 16,
-  },
-  button: {
-    flex: 2,
+  hint: {
     flexDirection: 'row',
     justifyContent: 'center',
-    paddingVertical: 12,
-  },
-  buttonWide: {
-    flex: 3,
+    gap: 8,
+    paddingHorizontal: 14,
+    borderRadius: 6,
   },
 })

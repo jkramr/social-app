@@ -1,20 +1,28 @@
 /* eslint-env detox/detox */
 
-import {openApp, login, createServer, sleep} from '../util'
+import {describe, beforeAll, it} from '@jest/globals'
+import {expect} from 'detox'
+import {openApp, loginAsAlice, createServer, sleep} from '../util'
 
 describe('Profile screen', () => {
-  let service: string
   beforeAll(async () => {
-    service = await createServer('?users&posts')
+    await createServer('?users&posts&feeds')
     await openApp({
       permissions: {notifications: 'YES', medialibrary: 'YES', photos: 'YES'},
     })
   })
 
   it('Login and navigate to my profile', async () => {
-    await expect(element(by.id('signInButton'))).toBeVisible()
-    await login(service, 'alice', 'hunter2')
+    await loginAsAlice()
     await element(by.id('bottomBarProfileBtn')).tap()
+  })
+
+  it('Can see feeds', async () => {
+    await element(by.id('profilePager-selector')).swipe('left')
+    await element(by.id('profilePager-selector-4')).tap()
+    await expect(element(by.id('feed-alice-favs'))).toBeVisible()
+    await element(by.id('profilePager-selector')).swipe('right')
+    await element(by.id('profilePager-selector-0')).tap()
   })
 
   it('Open and close edit profile modal', async () => {
@@ -53,7 +61,7 @@ describe('Profile screen', () => {
     await expect(element(by.id('profileHeaderDisplayName'))).toHaveText(
       'alice.test',
     )
-    await expect(element(by.id('profileHeaderDescription'))).toHaveText('')
+    await expect(element(by.id('profileHeaderDescription'))).not.toExist()
   })
 
   it('Set avi and banner via the edit profile modal', async () => {
@@ -107,27 +115,35 @@ describe('Profile screen', () => {
   })
 
   it('Can mute/unmute another user', async () => {
-    await expect(element(by.id('profileHeaderMutedNotice'))).not.toExist()
+    await expect(element(by.id('profileHeaderAlert'))).not.toExist()
     await element(by.id('profileHeaderDropdownBtn')).tap()
     await element(by.text('Mute Account')).tap()
-    await expect(element(by.id('profileHeaderMutedNotice'))).toBeVisible()
+    await expect(element(by.id('profileHeaderAlert'))).toBeVisible()
     await element(by.id('profileHeaderDropdownBtn')).tap()
     await element(by.text('Unmute Account')).tap()
-    await expect(element(by.id('profileHeaderMutedNotice'))).not.toExist()
+    await expect(element(by.id('profileHeaderAlert'))).not.toExist()
   })
 
   it('Can report another user', async () => {
     await element(by.id('profileHeaderDropdownBtn')).tap()
     await element(by.text('Report Account')).tap()
-    await expect(element(by.id('reportAccountModal'))).toBeVisible()
+    await expect(element(by.id('reportModal'))).toBeVisible()
     await element(
-      by.id('reportAccountRadios-com.atproto.moderation.defs#reasonSpam'),
+      by.id('reportReasonRadios-com.atproto.moderation.defs#reasonSpam'),
     ).tap()
     await element(by.id('sendReportBtn')).tap()
-    await expect(element(by.id('reportAccountModal'))).not.toBeVisible()
+    await expect(element(by.id('reportModal'))).not.toBeVisible()
   })
 
   it('Can like posts', async () => {
+    await element(by.id('postsFeed-flatlist')).swipe(
+      'down',
+      'slow',
+      1,
+      0.5,
+      0.5,
+    )
+
     const posts = by.id('feedItem-by-bob.test')
     await expect(
       element(by.id('likeCount').withAncestor(posts)).atIndex(0),
@@ -167,11 +183,11 @@ describe('Profile screen', () => {
     const posts = by.id('feedItem-by-bob.test')
     await element(by.id('postDropdownBtn').withAncestor(posts)).atIndex(0).tap()
     await element(by.text('Report post')).tap()
-    await expect(element(by.id('reportPostModal'))).toBeVisible()
+    await expect(element(by.id('reportModal'))).toBeVisible()
     await element(
-      by.id('reportPostRadios-com.atproto.moderation.defs#reasonSpam'),
+      by.id('reportReasonRadios-com.atproto.moderation.defs#reasonSpam'),
     ).tap()
     await element(by.id('sendReportBtn')).tap()
-    await expect(element(by.id('reportPostModal'))).not.toBeVisible()
+    await expect(element(by.id('reportModal'))).not.toBeVisible()
   })
 })

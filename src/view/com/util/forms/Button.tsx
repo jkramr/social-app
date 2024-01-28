@@ -7,6 +7,8 @@ import {
   Pressable,
   ViewStyle,
   PressableStateCallbackType,
+  ActivityIndicator,
+  View,
 } from 'react-native'
 import {Text} from '../text/Text'
 import {useTheme} from 'lib/ThemeContext'
@@ -40,6 +42,7 @@ export function Button({
   type = 'primary',
   label,
   style,
+  labelContainerStyle,
   labelStyle,
   onPress,
   children,
@@ -48,17 +51,22 @@ export function Button({
   accessibilityHint,
   accessibilityLabelledBy,
   onAccessibilityEscape,
+  withLoading = false,
+  disabled = false,
 }: React.PropsWithChildren<{
   type?: ButtonType
   label?: string
   style?: StyleProp<ViewStyle>
+  labelContainerStyle?: StyleProp<ViewStyle>
   labelStyle?: StyleProp<TextStyle>
-  onPress?: () => void
+  onPress?: () => void | Promise<void>
   testID?: string
   accessibilityLabel?: string
   accessibilityHint?: string
   accessibilityLabelledBy?: string
   onAccessibilityEscape?: () => void
+  withLoading?: boolean
+  disabled?: boolean
 }>) {
   const theme = useTheme()
   const typeOuterStyle = choose<ViewStyle, Record<ButtonType, ViewStyle>>(
@@ -138,13 +146,16 @@ export function Button({
     },
   )
 
+  const [isLoading, setIsLoading] = React.useState(false)
   const onPressWrapped = React.useCallback(
-    (event: Event) => {
+    async (event: Event) => {
       event.stopPropagation()
       event.preventDefault()
-      onPress?.()
+      withLoading && setIsLoading(true)
+      await onPress?.()
+      withLoading && setIsLoading(false)
     },
-    [onPress],
+    [onPress, withLoading],
   )
 
   const getStyle = React.useCallback(
@@ -160,23 +171,43 @@ export function Button({
     [typeOuterStyle, style],
   )
 
+  const renderChildern = React.useCallback(() => {
+    if (!label) {
+      return children
+    }
+
+    return (
+      <View style={[styles.labelContainer, labelContainerStyle]}>
+        {label && withLoading && isLoading ? (
+          <ActivityIndicator size={12} color={typeLabelStyle.color} />
+        ) : null}
+        <Text type="button" style={[typeLabelStyle, labelStyle]}>
+          {label}
+        </Text>
+      </View>
+    )
+  }, [
+    children,
+    label,
+    withLoading,
+    isLoading,
+    labelContainerStyle,
+    typeLabelStyle,
+    labelStyle,
+  ])
+
   return (
     <Pressable
       style={getStyle}
       onPress={onPressWrapped}
+      disabled={disabled || isLoading}
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
       accessibilityLabelledBy={accessibilityLabelledBy}
       onAccessibilityEscape={onAccessibilityEscape}>
-      {label ? (
-        <Text type="button" style={[typeLabelStyle, labelStyle]}>
-          {label}
-        </Text>
-      ) : (
-        children
-      )}
+      {renderChildern}
     </Pressable>
   )
 }
@@ -186,5 +217,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 24,
+  },
+  labelContainer: {
+    flexDirection: 'row',
+    gap: 8,
   },
 })

@@ -12,19 +12,22 @@ import {
 } from '@fortawesome/react-native-fontawesome'
 import LinearGradient from 'react-native-linear-gradient'
 import {Text} from '../util/text/Text'
-import {useStores} from 'state/index'
 import {s, gradients} from 'lib/styles'
 import {usePalette} from 'lib/hooks/usePalette'
 import {useTheme} from 'lib/ThemeContext'
 import {ErrorMessage} from '../util/error/ErrorMessage'
 import {cleanError} from 'lib/strings/errors'
+import {Trans, msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
+import {useModalControls} from '#/state/modals'
 
 export const snapPoints = ['80%']
 
 export function Component({}: {}) {
   const pal = usePalette('default')
   const theme = useTheme()
-  const store = useStores()
+  const {_} = useLingui()
+  const {closeModal} = useModalControls()
   const [email, setEmail] = React.useState<string>('')
   const [isEmailSent, setIsEmailSent] = React.useState<boolean>(false)
   const [isProcessing, setIsProcessing] = React.useState<boolean>(false)
@@ -45,7 +48,7 @@ export function Component({}: {}) {
       } else {
         setError(
           resBody.error ||
-            'Something went wrong. Check your email and try again.',
+            _(msg`Something went wrong. Check your email and try again.`),
         )
       }
     } catch (e: any) {
@@ -54,32 +57,38 @@ export function Component({}: {}) {
     setIsProcessing(false)
   }
   const onCancel = () => {
-    store.shell.closeModal()
+    closeModal()
   }
 
   return (
     <View style={[styles.container, pal.view]}>
       <View style={[styles.innerContainer, pal.view]}>
         <Text type="title-xl" style={[styles.title, pal.text]}>
-          Join the waitlist
+          <Trans>Join the waitlist</Trans>
         </Text>
         <Text type="lg" style={[styles.description, pal.text]}>
-          Bluesky uses invites to build a healthier community. If you don't know
-          anybody with an invite, you can sign up for the waitlist and we'll
-          send one soon.
+          <Trans>
+            Bluesky uses invites to build a healthier community. If you don't
+            know anybody with an invite, you can sign up for the waitlist and
+            we'll send one soon.
+          </Trans>
         </Text>
         <TextInput
           style={[styles.textInput, pal.borderDark, pal.text, s.mb10, s.mt10]}
-          placeholder="Enter your email"
+          placeholder={_(msg`Enter your email`)}
           placeholderTextColor={pal.textLight.color}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardAppearance={theme.colorScheme}
           value={email}
           onChangeText={setEmail}
+          onSubmitEditing={onPressSignup}
+          enterKeyHint="done"
           accessible={true}
-          accessibilityLabel="Email"
-          accessibilityHint="Input your email to get on the Bluesky waitlist"
+          accessibilityLabel={_(msg`Email`)}
+          accessibilityHint={_(
+            msg`Input your email to get on the Bluesky waitlist`,
+          )}
         />
         {error ? (
           <View style={s.mt10}>
@@ -96,8 +105,10 @@ export function Component({}: {}) {
               icon="check"
               style={pal.text as FontAwesomeIconStyle}
             />
-            <Text style={s.ml10}>
-              Your email has been saved! We&apos;ll be in touch soon.
+            <Text style={[s.ml10, pal.text]}>
+              <Trans>
+                Your email has been saved! We&apos;ll be in touch soon.
+              </Trans>
             </Text>
           </View>
         ) : (
@@ -105,14 +116,16 @@ export function Component({}: {}) {
             <TouchableOpacity
               onPress={onPressSignup}
               accessibilityRole="button"
-              accessibilityHint={`Confirms signing up ${email} to the waitlist`}>
+              accessibilityHint={_(
+                msg`Confirms signing up ${email} to the waitlist`,
+              )}>
               <LinearGradient
                 colors={[gradients.blueLight.start, gradients.blueLight.end]}
                 start={{x: 0, y: 0}}
                 end={{x: 1, y: 1}}
                 style={[styles.btn]}>
                 <Text type="button-lg" style={[s.white, s.bold]}>
-                  Join Waitlist
+                  <Trans>Join Waitlist</Trans>
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -120,11 +133,13 @@ export function Component({}: {}) {
               style={[styles.btn, s.mt10]}
               onPress={onCancel}
               accessibilityRole="button"
-              accessibilityLabel="Cancel waitlist signup"
-              accessibilityHint={`Exits signing up for waitlist with ${email}`}
+              accessibilityLabel={_(msg`Cancel waitlist signup`)}
+              accessibilityHint={_(
+                msg`Exits signing up for waitlist with ${email}`,
+              )}
               onAccessibilityEscape={onCancel}>
               <Text type="button-lg" style={pal.textLight}>
-                Cancel
+                <Trans>Cancel</Trans>
               </Text>
             </TouchableOpacity>
           </>

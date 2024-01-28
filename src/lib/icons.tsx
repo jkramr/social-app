@@ -1,6 +1,6 @@
 import React from 'react'
 import {StyleProp, TextStyle, ViewStyle} from 'react-native'
-import Svg, {Path, Rect, Line, Ellipse, Circle} from 'react-native-svg'
+import Svg, {Path, Rect, Line, Ellipse} from 'react-native-svg'
 
 export function GridIcon({
   style,
@@ -884,45 +884,7 @@ export function HandIcon({
   )
 }
 
-export function SatelliteDishIconSolid({
-  style,
-  size,
-  strokeWidth = 1.5,
-}: {
-  style?: StyleProp<ViewStyle>
-  size?: string | number
-  strokeWidth?: number
-}) {
-  return (
-    <Svg
-      width={size || 24}
-      height={size || 24}
-      viewBox="0 0 22 22"
-      style={style}
-      fill="none"
-      stroke="none">
-      <Path
-        d="M16 19.6622C14.5291 20.513 12.8214 21 11 21C5.47715 21 1 16.5229 1 11C1 9.17858 1.48697 7.47088 2.33782 6.00002C3.18867 4.52915 6 7.66219 6 7.66219L14.5 16.1622C14.5 16.1622 17.4709 18.8113 16 19.6622Z"
-        fill="currentColor"
-      />
-      <Path
-        d="M8 1.62961C9.04899 1.22255 10.1847 1 11.3704 1C16.6887 1 21 5.47715 21 11C21 12.0452 20.8456 13.053 20.5592 14"
-        stroke="currentColor"
-        strokeWidth={strokeWidth}
-        strokeLinecap="round"
-      />
-      <Path
-        d="M9 5.38745C9.64553 5.13695 10.3444 5 11.0741 5C14.3469 5 17 7.75517 17 11.1538C17 11.797 16.905 12.4172 16.7287 13"
-        stroke="currentColor"
-        strokeWidth={strokeWidth}
-        strokeLinecap="round"
-      />
-      <Circle cx="10" cy="12" r="2" fill="currentColor" />
-    </Svg>
-  )
-}
-
-export function SatelliteDishIcon({
+export function HashtagIcon({
   style,
   size,
   strokeWidth = 1.5,
@@ -934,25 +896,80 @@ export function SatelliteDishIcon({
   return (
     <Svg
       fill="none"
-      viewBox="0 0 22 22"
+      stroke="currentColor"
+      viewBox="0 0 30 30"
       strokeWidth={strokeWidth}
+      width={size}
+      height={size}
+      style={style}>
+      <Path d="M2 10H28" strokeLinecap="round" />
+      <Path d="M2 20H28" strokeLinecap="round" />
+      <Path d="M11 3L9 27" strokeLinecap="round" />
+      <Path d="M21 3L19 27" strokeLinecap="round" />
+    </Svg>
+  )
+}
+
+// Copyright (c) 2020 Refactoring UI Inc.
+// https://github.com/tailwindlabs/heroicons/blob/master/LICENSE
+export function ShieldExclamation({
+  style,
+  size,
+  strokeWidth = 1.5,
+}: {
+  style?: StyleProp<TextStyle>
+  size?: string | number
+  strokeWidth?: number
+}) {
+  let color = 'currentColor'
+  if (
+    style &&
+    typeof style === 'object' &&
+    'color' in style &&
+    typeof style.color === 'string'
+  ) {
+    color = style.color
+  }
+  return (
+    <Svg
+      width={size}
+      height={size}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={strokeWidth || 1.5}
+      stroke={color}
+      style={style}>
+      <Path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 9v3.75m0-10.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286zm0 13.036h.008v.008H12v-.008z"
+      />
+    </Svg>
+  )
+}
+
+export function ListIcon({
+  style,
+  size,
+  strokeWidth = 1.5,
+}: {
+  style?: StyleProp<TextStyle>
+  size?: string | number
+  strokeWidth?: number
+}) {
+  return (
+    <Svg
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={strokeWidth || 1.5}
       stroke="currentColor"
       width={size}
       height={size}
       style={style}>
-      <Path d="M 12.705346,15.777547 C 14.4635,17.5315 14.7526,17.8509 14.9928,18.1812 c 0.2139,0.2943 0.3371,0.5275 0.3889,0.6822 C 14.0859,19.5872 12.5926,20 11,20 6.02944,20 2,15.9706 2,11 2,9.4151 2.40883,7.9285 3.12619,6.63699 3.304,6.69748 3.56745,6.84213 3.89275,7.08309 4.3705644,7.4380098 4.7486794,7.8160923 6.4999995,9.5689376 8.2513197,11.321783 10.947192,14.023595 12.705346,15.777547 Z" />
       <Path
-        d="M8 1.62961C9.04899 1.22255 10.1847 1 11.3704 1C16.6887 1 21 5.47715 21 11C21 12.0452 20.8456 13.053 20.5592 14"
         strokeLinecap="round"
-      />
-      <Path
-        d="M9 5.38745C9.64553 5.13695 10.3444 5 11.0741 5C14.3469 5 17 7.75517 17 11.1538C17 11.797 16.905 12.4172 16.7287 13"
-        strokeLinecap="round"
-      />
-      <Path
-        d="M12 12C12 12.7403 11.5978 13.3866 11 13.7324L8.26756 11C8.61337 10.4022 9.25972 10 10 10C11.1046 10 12 10.8954 12 12Z"
-        fill="currentColor"
-        stroke="none"
+        strokeLinejoin="round"
+        d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
       />
     </Svg>
   )

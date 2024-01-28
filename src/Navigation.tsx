@@ -1,6 +1,4 @@
 import * as React from 'react'
-import {StyleSheet} from 'react-native'
-import {observer} from 'mobx-react-lite'
 import {
   NavigationContainer,
   createNavigationContainerRef,
@@ -9,7 +7,6 @@ import {
   DefaultTheme,
   DarkTheme,
 } from '@react-navigation/native'
-import {createNativeStackNavigator} from '@react-navigation/native-stack'
 import {
   BottomTabBarProps,
   createBottomTabNavigator,
@@ -27,32 +24,43 @@ import {
 import {BottomBar} from './view/shell/bottom-bar/BottomBar'
 import {buildStateObject} from 'lib/routes/helpers'
 import {State, RouteParams} from 'lib/routes/types'
-import {colors} from 'lib/styles'
-import {isNative} from 'platform/detection'
+import {isAndroid, isNative} from 'platform/detection'
 import {useColorSchemeStyle} from 'lib/hooks/useColorSchemeStyle'
 import {router} from './routes'
 import {usePalette} from 'lib/hooks/usePalette'
-import {useStores} from './state'
+import {bskyTitle} from 'lib/strings/headings'
+import {JSX} from 'react/jsx-runtime'
+import {timeout} from 'lib/async/timeout'
+import {useUnreadNotifications} from './state/queries/notifications/unread'
+import {useSession} from './state/session'
+import {useModalControls} from './state/modals'
+import {
+  shouldRequestEmailConfirmation,
+  setEmailConfirmationRequested,
+} from './state/shell/reminders'
+import {init as initAnalytics} from './lib/analytics/analytics'
+import {useWebScrollRestoration} from './lib/hooks/useWebScrollRestoration'
 
 import {HomeScreen} from './view/screens/Home'
 import {SearchScreen} from './view/screens/Search'
 import {FeedsScreen} from './view/screens/Feeds'
 import {NotificationsScreen} from './view/screens/Notifications'
+import {ListsScreen} from './view/screens/Lists'
 import {ModerationScreen} from './view/screens/Moderation'
-import {ModerationMuteListsScreen} from './view/screens/ModerationMuteLists'
-import {DiscoverFeedsScreen} from 'view/screens/DiscoverFeeds'
+import {ModerationModlistsScreen} from './view/screens/ModerationModlists'
 import {NotFoundScreen} from './view/screens/NotFound'
 import {SettingsScreen} from './view/screens/Settings'
+import {LanguageSettingsScreen} from './view/screens/LanguageSettings'
 import {ProfileScreen} from './view/screens/Profile'
 import {ProfileFollowersScreen} from './view/screens/ProfileFollowers'
 import {ProfileFollowsScreen} from './view/screens/ProfileFollows'
-import {CustomFeedScreen} from './view/screens/CustomFeed'
-import {CustomFeedLikedByScreen} from './view/screens/CustomFeedLikedBy'
+import {ProfileFeedScreen} from './view/screens/ProfileFeed'
+import {ProfileFeedLikedByScreen} from './view/screens/ProfileFeedLikedBy'
 import {ProfileListScreen} from './view/screens/ProfileList'
 import {PostThreadScreen} from './view/screens/PostThread'
 import {PostLikedByScreen} from './view/screens/PostLikedBy'
 import {PostRepostedByScreen} from './view/screens/PostRepostedBy'
-import {DebugScreen} from './view/screens/Debug'
+import {Storybook} from './view/screens/Storybook'
 import {LogScreen} from './view/screens/Log'
 import {SupportScreen} from './view/screens/Support'
 import {PrivacyPolicyScreen} from './view/screens/PrivacyPolicy'
@@ -63,158 +71,194 @@ import {AppPasswords} from 'view/screens/AppPasswords'
 import {ModerationMutedAccounts} from 'view/screens/ModerationMutedAccounts'
 import {ModerationBlockedAccounts} from 'view/screens/ModerationBlockedAccounts'
 import {SavedFeeds} from 'view/screens/SavedFeeds'
-import {getRoutingInstrumentation} from 'lib/sentry'
-import {bskyTitle} from 'lib/strings/headings'
-import {JSX} from 'react/jsx-runtime'
-import {timeout} from 'lib/async/timeout'
+import {PreferencesHomeFeed} from 'view/screens/PreferencesHomeFeed'
+import {PreferencesThreads} from 'view/screens/PreferencesThreads'
+import {PreferencesExternalEmbeds} from '#/view/screens/PreferencesExternalEmbeds'
+import {createNativeStackNavigatorWithAuth} from './view/shell/createNativeStackNavigatorWithAuth'
+import {msg} from '@lingui/macro'
+import {i18n, MessageDescriptor} from '@lingui/core'
 
 const navigationRef = createNavigationContainerRef<AllNavigatorParams>()
 
-const HomeTab = createNativeStackNavigator<HomeTabNavigatorParams>()
-const SearchTab = createNativeStackNavigator<SearchTabNavigatorParams>()
-const FeedsTab = createNativeStackNavigator<FeedsTabNavigatorParams>()
+const HomeTab = createNativeStackNavigatorWithAuth<HomeTabNavigatorParams>()
+const SearchTab = createNativeStackNavigatorWithAuth<SearchTabNavigatorParams>()
+const FeedsTab = createNativeStackNavigatorWithAuth<FeedsTabNavigatorParams>()
 const NotificationsTab =
-  createNativeStackNavigator<NotificationsTabNavigatorParams>()
-const MyProfileTab = createNativeStackNavigator<MyProfileTabNavigatorParams>()
-const Flat = createNativeStackNavigator<FlatNavigatorParams>()
+  createNativeStackNavigatorWithAuth<NotificationsTabNavigatorParams>()
+const MyProfileTab =
+  createNativeStackNavigatorWithAuth<MyProfileTabNavigatorParams>()
+const Flat = createNativeStackNavigatorWithAuth<FlatNavigatorParams>()
 const Tab = createBottomTabNavigator<BottomTabNavigatorParams>()
 
 /**
  * These "common screens" are reused across stacks.
  */
 function commonScreens(Stack: typeof HomeTab, unreadCountLabel?: string) {
-  const title = (page: string) => bskyTitle(page, unreadCountLabel)
+  const title = (page: MessageDescriptor) =>
+    bskyTitle(i18n._(page), unreadCountLabel)
 
   return (
     <>
       <Stack.Screen
         name="NotFound"
-        component={NotFoundScreen}
-        options={{title: title('Not Found')}}
+        getComponent={() => NotFoundScreen}
+        options={{title: title(msg`Not Found`)}}
+      />
+      <Stack.Screen
+        name="Lists"
+        component={ListsScreen}
+        options={{title: title(msg`Lists`), requireAuth: true}}
       />
       <Stack.Screen
         name="Moderation"
-        component={ModerationScreen}
-        options={{title: title('Moderation')}}
+        getComponent={() => ModerationScreen}
+        options={{title: title(msg`Moderation`), requireAuth: true}}
       />
       <Stack.Screen
-        name="ModerationMuteLists"
-        component={ModerationMuteListsScreen}
-        options={{title: title('Mute Lists')}}
+        name="ModerationModlists"
+        getComponent={() => ModerationModlistsScreen}
+        options={{title: title(msg`Moderation Lists`), requireAuth: true}}
       />
       <Stack.Screen
         name="ModerationMutedAccounts"
-        component={ModerationMutedAccounts}
-        options={{title: title('Muted Accounts')}}
+        getComponent={() => ModerationMutedAccounts}
+        options={{title: title(msg`Muted Accounts`), requireAuth: true}}
       />
       <Stack.Screen
         name="ModerationBlockedAccounts"
-        component={ModerationBlockedAccounts}
-        options={{title: title('Blocked Accounts')}}
-      />
-      <Stack.Screen
-        name="DiscoverFeeds"
-        component={DiscoverFeedsScreen}
-        options={{title: title('Discover Feeds')}}
+        getComponent={() => ModerationBlockedAccounts}
+        options={{title: title(msg`Blocked Accounts`), requireAuth: true}}
       />
       <Stack.Screen
         name="Settings"
-        component={SettingsScreen}
-        options={{title: title('Settings')}}
+        getComponent={() => SettingsScreen}
+        options={{title: title(msg`Settings`), requireAuth: true}}
+      />
+      <Stack.Screen
+        name="LanguageSettings"
+        getComponent={() => LanguageSettingsScreen}
+        options={{title: title(msg`Language Settings`), requireAuth: true}}
       />
       <Stack.Screen
         name="Profile"
-        component={ProfileScreen}
-        options={({route}) => ({title: title(`@${route.params.name}`)})}
+        getComponent={() => ProfileScreen}
+        options={({route}) => ({
+          title: bskyTitle(`@${route.params.name}`, unreadCountLabel),
+          animation: 'none',
+        })}
       />
       <Stack.Screen
         name="ProfileFollowers"
-        component={ProfileFollowersScreen}
+        getComponent={() => ProfileFollowersScreen}
         options={({route}) => ({
-          title: title(`People following @${route.params.name}`),
+          title: title(msg`People following @${route.params.name}`),
         })}
       />
       <Stack.Screen
         name="ProfileFollows"
-        component={ProfileFollowsScreen}
+        getComponent={() => ProfileFollowsScreen}
         options={({route}) => ({
-          title: title(`People followed by @${route.params.name}`),
+          title: title(msg`People followed by @${route.params.name}`),
         })}
       />
       <Stack.Screen
         name="ProfileList"
-        component={ProfileListScreen}
-        options={{title: title('Mute List')}}
+        getComponent={() => ProfileListScreen}
+        options={{title: title(msg`List`), requireAuth: true}}
       />
       <Stack.Screen
         name="PostThread"
-        component={PostThreadScreen}
-        options={({route}) => ({title: title(`Post by @${route.params.name}`)})}
+        getComponent={() => PostThreadScreen}
+        options={({route}) => ({
+          title: title(msg`Post by @${route.params.name}`),
+        })}
       />
       <Stack.Screen
         name="PostLikedBy"
-        component={PostLikedByScreen}
-        options={({route}) => ({title: title(`Post by @${route.params.name}`)})}
+        getComponent={() => PostLikedByScreen}
+        options={({route}) => ({
+          title: title(msg`Post by @${route.params.name}`),
+        })}
       />
       <Stack.Screen
         name="PostRepostedBy"
-        component={PostRepostedByScreen}
-        options={({route}) => ({title: title(`Post by @${route.params.name}`)})}
+        getComponent={() => PostRepostedByScreen}
+        options={({route}) => ({
+          title: title(msg`Post by @${route.params.name}`),
+        })}
       />
       <Stack.Screen
-        name="CustomFeed"
-        component={CustomFeedScreen}
-        options={{title: title('Feed')}}
+        name="ProfileFeed"
+        getComponent={() => ProfileFeedScreen}
+        options={{title: title(msg`Feed`), requireAuth: true}}
       />
       <Stack.Screen
-        name="CustomFeedLikedBy"
-        component={CustomFeedLikedByScreen}
-        options={{title: title('Liked by')}}
+        name="ProfileFeedLikedBy"
+        getComponent={() => ProfileFeedLikedByScreen}
+        options={{title: title(msg`Liked by`)}}
       />
       <Stack.Screen
         name="Debug"
-        component={DebugScreen}
-        options={{title: title('Debug')}}
+        getComponent={() => Storybook}
+        options={{title: title(msg`Storybook`), requireAuth: true}}
       />
       <Stack.Screen
         name="Log"
-        component={LogScreen}
-        options={{title: title('Log')}}
+        getComponent={() => LogScreen}
+        options={{title: title(msg`Log`), requireAuth: true}}
       />
       <Stack.Screen
         name="Support"
-        component={SupportScreen}
-        options={{title: title('Support')}}
+        getComponent={() => SupportScreen}
+        options={{title: title(msg`Support`)}}
       />
       <Stack.Screen
         name="PrivacyPolicy"
-        component={PrivacyPolicyScreen}
-        options={{title: title('Privacy Policy')}}
+        getComponent={() => PrivacyPolicyScreen}
+        options={{title: title(msg`Privacy Policy`)}}
       />
       <Stack.Screen
         name="TermsOfService"
-        component={TermsOfServiceScreen}
-        options={{title: title('Terms of Service')}}
+        getComponent={() => TermsOfServiceScreen}
+        options={{title: title(msg`Terms of Service`)}}
       />
       <Stack.Screen
         name="CommunityGuidelines"
-        component={CommunityGuidelinesScreen}
-        options={{title: title('Community Guidelines')}}
+        getComponent={() => CommunityGuidelinesScreen}
+        options={{title: title(msg`Community Guidelines`)}}
       />
       <Stack.Screen
         name="CopyrightPolicy"
-        component={CopyrightPolicyScreen}
-        options={{title: title('Copyright Policy')}}
+        getComponent={() => CopyrightPolicyScreen}
+        options={{title: title(msg`Copyright Policy`)}}
       />
       <Stack.Screen
         name="AppPasswords"
-        component={AppPasswords}
-        options={{title: title('App Passwords')}}
+        getComponent={() => AppPasswords}
+        options={{title: title(msg`App Passwords`), requireAuth: true}}
       />
       <Stack.Screen
         name="SavedFeeds"
-        component={SavedFeeds}
-        options={{title: title('Edit My Feeds')}}
+        getComponent={() => SavedFeeds}
+        options={{title: title(msg`Edit My Feeds`), requireAuth: true}}
+      />
+      <Stack.Screen
+        name="PreferencesHomeFeed"
+        getComponent={() => PreferencesHomeFeed}
+        options={{title: title(msg`Home Feed Preferences`), requireAuth: true}}
+      />
+      <Stack.Screen
+        name="PreferencesThreads"
+        getComponent={() => PreferencesThreads}
+        options={{title: title(msg`Threads Preferences`), requireAuth: true}}
+      />
+      <Stack.Screen
+        name="PreferencesExternalEmbeds"
+        getComponent={() => PreferencesExternalEmbeds}
+        options={{
+          title: title(msg`External Media Preferences`),
+          requireAuth: true,
+        }}
       />
     </>
   )
@@ -231,162 +275,182 @@ function TabsNavigator() {
     ),
     [],
   )
+
   return (
     <Tab.Navigator
       initialRouteName="HomeTab"
       backBehavior="initialRoute"
       screenOptions={{headerShown: false, lazy: true}}
       tabBar={tabBar}>
-      <Tab.Screen name="HomeTab" component={HomeTabNavigator} />
-      <Tab.Screen name="SearchTab" component={SearchTabNavigator} />
-      <Tab.Screen name="FeedsTab" component={FeedsTabNavigator} />
+      <Tab.Screen name="HomeTab" getComponent={() => HomeTabNavigator} />
+      <Tab.Screen name="SearchTab" getComponent={() => SearchTabNavigator} />
+      <Tab.Screen name="FeedsTab" getComponent={() => FeedsTabNavigator} />
       <Tab.Screen
         name="NotificationsTab"
-        component={NotificationsTabNavigator}
+        getComponent={() => NotificationsTabNavigator}
       />
-      <Tab.Screen name="MyProfileTab" component={MyProfileTabNavigator} />
+      <Tab.Screen
+        name="MyProfileTab"
+        getComponent={() => MyProfileTabNavigator}
+      />
     </Tab.Navigator>
   )
 }
 
 function HomeTabNavigator() {
-  const contentStyle = useColorSchemeStyle(styles.bgLight, styles.bgDark)
+  const pal = usePalette('default')
+
   return (
     <HomeTab.Navigator
       screenOptions={{
+        animation: isAndroid ? 'none' : undefined,
         gestureEnabled: true,
         fullScreenGestureEnabled: true,
         headerShown: false,
         animationDuration: 250,
-        contentStyle,
+        contentStyle: pal.view,
       }}>
-      <HomeTab.Screen name="Home" component={HomeScreen} />
+      <HomeTab.Screen
+        name="Home"
+        getComponent={() => HomeScreen}
+        options={{requireAuth: true}}
+      />
       {commonScreens(HomeTab)}
     </HomeTab.Navigator>
   )
 }
 
 function SearchTabNavigator() {
-  const contentStyle = useColorSchemeStyle(styles.bgLight, styles.bgDark)
+  const pal = usePalette('default')
   return (
     <SearchTab.Navigator
       screenOptions={{
+        animation: isAndroid ? 'none' : undefined,
         gestureEnabled: true,
         fullScreenGestureEnabled: true,
         headerShown: false,
         animationDuration: 250,
-        contentStyle,
+        contentStyle: pal.view,
       }}>
-      <SearchTab.Screen name="Search" component={SearchScreen} />
+      <SearchTab.Screen name="Search" getComponent={() => SearchScreen} />
       {commonScreens(SearchTab as typeof HomeTab)}
     </SearchTab.Navigator>
   )
 }
 
 function FeedsTabNavigator() {
-  const contentStyle = useColorSchemeStyle(styles.bgLight, styles.bgDark)
+  const pal = usePalette('default')
   return (
     <FeedsTab.Navigator
       screenOptions={{
+        animation: isAndroid ? 'none' : undefined,
         gestureEnabled: true,
         fullScreenGestureEnabled: true,
         headerShown: false,
         animationDuration: 250,
-        contentStyle,
+        contentStyle: pal.view,
       }}>
-      <FeedsTab.Screen name="Feeds" component={FeedsScreen} />
+      <FeedsTab.Screen
+        name="Feeds"
+        getComponent={() => FeedsScreen}
+        options={{requireAuth: true}}
+      />
       {commonScreens(FeedsTab as typeof HomeTab)}
     </FeedsTab.Navigator>
   )
 }
 
 function NotificationsTabNavigator() {
-  const contentStyle = useColorSchemeStyle(styles.bgLight, styles.bgDark)
+  const pal = usePalette('default')
   return (
     <NotificationsTab.Navigator
       screenOptions={{
+        animation: isAndroid ? 'none' : undefined,
         gestureEnabled: true,
         fullScreenGestureEnabled: true,
         headerShown: false,
         animationDuration: 250,
-        contentStyle,
+        contentStyle: pal.view,
       }}>
       <NotificationsTab.Screen
         name="Notifications"
-        component={NotificationsScreen}
+        getComponent={() => NotificationsScreen}
+        options={{requireAuth: true}}
       />
       {commonScreens(NotificationsTab as typeof HomeTab)}
     </NotificationsTab.Navigator>
   )
 }
 
-const MyProfileTabNavigator = observer(() => {
-  const contentStyle = useColorSchemeStyle(styles.bgLight, styles.bgDark)
-  const store = useStores()
+function MyProfileTabNavigator() {
+  const pal = usePalette('default')
   return (
     <MyProfileTab.Navigator
       screenOptions={{
+        animation: isAndroid ? 'none' : undefined,
         gestureEnabled: true,
         fullScreenGestureEnabled: true,
         headerShown: false,
         animationDuration: 250,
-        contentStyle,
+        contentStyle: pal.view,
       }}>
       <MyProfileTab.Screen
-        name="MyProfile"
         // @ts-ignore // TODO: fix this broken type in ProfileScreen
-        component={ProfileScreen}
+        name="MyProfile"
+        getComponent={() => ProfileScreen}
         initialParams={{
-          name: store.me.did,
-          hideBackButton: true,
+          name: 'me',
         }}
       />
       {commonScreens(MyProfileTab as typeof HomeTab)}
     </MyProfileTab.Navigator>
   )
-})
+}
 
 /**
  * The FlatNavigator is used by Web to represent the routes
  * in a single ("flat") stack.
  */
-const FlatNavigator = observer(() => {
+const FlatNavigator = () => {
   const pal = usePalette('default')
-  const unreadCountLabel = useStores().me.notifications.unreadCountLabel
-  const title = (page: string) => bskyTitle(page, unreadCountLabel)
+  const numUnread = useUnreadNotifications()
+  const screenListeners = useWebScrollRestoration()
+  const title = (page: MessageDescriptor) => bskyTitle(i18n._(page), numUnread)
+
   return (
     <Flat.Navigator
+      screenListeners={screenListeners}
       screenOptions={{
         gestureEnabled: true,
         fullScreenGestureEnabled: true,
         headerShown: false,
         animationDuration: 250,
-        contentStyle: [pal.view],
+        contentStyle: pal.view,
       }}>
       <Flat.Screen
         name="Home"
-        component={HomeScreen}
-        options={{title: title('Home')}}
+        getComponent={() => HomeScreen}
+        options={{title: title(msg`Home`), requireAuth: true}}
       />
       <Flat.Screen
         name="Search"
-        component={SearchScreen}
-        options={{title: title('Search')}}
+        getComponent={() => SearchScreen}
+        options={{title: title(msg`Search`)}}
       />
       <Flat.Screen
         name="Feeds"
-        component={FeedsScreen}
-        options={{title: title('Feeds')}}
+        getComponent={() => FeedsScreen}
+        options={{title: title(msg`Feeds`), requireAuth: true}}
       />
       <Flat.Screen
         name="Notifications"
-        component={NotificationsScreen}
-        options={{title: title('Notifications')}}
+        getComponent={() => NotificationsScreen}
+        options={{title: title(msg`Notifications`), requireAuth: true}}
       />
-      {commonScreens(Flat as typeof HomeTab, unreadCountLabel)}
+      {commonScreens(Flat as typeof HomeTab, numUnread)}
     </Flat.Navigator>
   )
-})
+}
 
 /**
  * The RoutesContainer should wrap all components which need access
@@ -438,17 +502,26 @@ const LINKING = {
 
 function RoutesContainer({children}: React.PropsWithChildren<{}>) {
   const theme = useColorSchemeStyle(DefaultTheme, DarkTheme)
+  const {currentAccount} = useSession()
+  const {openModal} = useModalControls()
+
+  function onReady() {
+    initAnalytics(currentAccount)
+
+    if (currentAccount && shouldRequestEmailConfirmation(currentAccount)) {
+      openModal({name: 'verify-email', showReminder: true})
+      setEmailConfirmationRequested()
+    }
+  }
+
   return (
     <NavigationContainer
       ref={navigationRef}
       linking={LINKING}
       theme={theme}
       onReady={() => {
-        // Register the navigation container with the Sentry instrumentation (only works on native)
-        if (isNative) {
-          const routingInstrumentation = getRoutingInstrumentation()
-          routingInstrumentation.registerNavigationContainer(navigationRef)
-        }
+        logModuleInitTime()
+        onReady()
       }}>
       {children}
     </NavigationContainer>
@@ -465,9 +538,21 @@ function navigate<K extends keyof AllNavigatorParams>(
   params?: AllNavigatorParams[K],
 ) {
   if (navigationRef.isReady()) {
-    // @ts-ignore I dont know what would make typescript happy but I have a life -prf
-    navigationRef.navigate(name, params)
+    return Promise.race([
+      new Promise<void>(resolve => {
+        const handler = () => {
+          resolve()
+          navigationRef.removeListener('state', handler)
+        }
+        navigationRef.addListener('state', handler)
+
+        // @ts-ignore I dont know what would make typescript happy but I have a life -prf
+        navigationRef.navigate(name, params)
+      }),
+      timeout(1e3),
+    ])
   }
+  return Promise.resolve()
 }
 
 function resetToTab(tabName: 'HomeTab' | 'SearchTab' | 'NotificationsTab') {
@@ -536,14 +621,27 @@ function handleLink(url: string) {
   }
 }
 
-const styles = StyleSheet.create({
-  bgDark: {
-    backgroundColor: colors.black,
-  },
-  bgLight: {
-    backgroundColor: colors.white,
-  },
-})
+let didInit = false
+function logModuleInitTime() {
+  if (didInit) {
+    return
+  }
+  didInit = true
+  const initMs = Math.round(
+    // @ts-ignore Emitted by Metro in the bundle prelude
+    performance.now() - global.__BUNDLE_START_TIME__,
+  )
+  console.log(`Time to first paint: ${initMs} ms`)
+  if (__DEV__) {
+    // This log is noisy, so keep false committed
+    const shouldLog = false
+    // Relies on our patch to polyfill.js in metro-runtime
+    const initLogs = (global as any).__INIT_LOGS__
+    if (shouldLog && Array.isArray(initLogs)) {
+      console.log(initLogs.join('\n'))
+    }
+  }
+}
 
 export {
   navigate,

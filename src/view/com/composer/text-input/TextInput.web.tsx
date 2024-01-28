@@ -1,31 +1,39 @@
 import React from 'react'
 import {StyleSheet, View} from 'react-native'
-import {RichText} from '@atproto/api'
+import {RichText, AppBskyRichtextFacet} from '@atproto/api'
+import EventEmitter from 'eventemitter3'
 import {useEditor, EditorContent, JSONContent} from '@tiptap/react'
 import {Document} from '@tiptap/extension-document'
 import History from '@tiptap/extension-history'
 import Hardbreak from '@tiptap/extension-hard-break'
-import {Link} from '@tiptap/extension-link'
 import {Mention} from '@tiptap/extension-mention'
 import {Paragraph} from '@tiptap/extension-paragraph'
 import {Placeholder} from '@tiptap/extension-placeholder'
-import {Text} from '@tiptap/extension-text'
+import {Text as TiptapText} from '@tiptap/extension-text'
 import isEqual from 'lodash.isequal'
-import {UserAutocompleteModel} from 'state/models/discovery/user-autocomplete'
 import {createSuggestion} from './web/Autocomplete'
 import {useColorSchemeStyle} from 'lib/hooks/useColorSchemeStyle'
 import {isUriImage, blobToDataUri} from 'lib/media/util'
+import {Emoji} from './web/EmojiPicker.web'
+import {LinkDecorator} from './web/LinkDecorator'
+import {generateJSON} from '@tiptap/html'
+import {useActorAutocompleteFn} from '#/state/queries/actor-autocomplete'
+import {usePalette} from '#/lib/hooks/usePalette'
+import {Portal} from '#/components/Portal'
+import {Text} from '../../util/text/Text'
+import {Trans} from '@lingui/macro'
+import Animated, {FadeIn, FadeOut} from 'react-native-reanimated'
 
 export interface TextInputRef {
   focus: () => void
   blur: () => void
+  getCursorPosition: () => DOMRect | undefined
 }
 
 interface TextInputProps {
   richtext: RichText
   placeholder: string
   suggestedLinks: Set<string>
-  autocompleteView: UserAutocompleteModel
   setRichText: (v: RichText | ((v: RichText) => RichText)) => void
   onPhotoPasted: (uri: string) => void
   onPressPublish: (richtext: RichText) => Promise<void>
@@ -33,103 +41,215 @@ interface TextInputProps {
   onError: (err: string) => void
 }
 
-export const TextInput = React.forwardRef(
-  (
-    {
-      richtext,
-      placeholder,
-      suggestedLinks,
-      autocompleteView,
-      setRichText,
-      onPhotoPasted,
-      onPressPublish,
-      onSuggestedLinksChanged,
-    }: // onError, TODO
-    TextInputProps,
-    ref,
-  ) => {
-    const modeClass = useColorSchemeStyle(
-      'ProseMirror-light',
-      'ProseMirror-dark',
-    )
+export const textInputWebEmitter = new EventEmitter()
 
-    const editor = useEditor(
-      {
-        extensions: [
-          Document,
-          Link.configure({
-            protocols: ['http', 'https'],
-            autolink: true,
-          }),
-          Mention.configure({
-            HTMLAttributes: {
-              class: 'mention',
-            },
-            suggestion: createSuggestion({autocompleteView}),
-          }),
-          Paragraph,
-          Placeholder.configure({
-            placeholder,
-          }),
-          Text,
-          History,
-          Hardbreak,
-        ],
-        editorProps: {
-          attributes: {
-            class: modeClass,
-          },
-          handlePaste: (_, event) => {
-            const items = event.clipboardData?.items
+export const TextInput = React.forwardRef(function TextInputImpl(
+  {
+    richtext,
+    placeholder,
+    suggestedLinks,
+    setRichText,
+    onPhotoPasted,
+    onPressPublish,
+    onSuggestedLinksChanged,
+  }: // onError, TODO
+  TextInputProps,
+  ref,
+) {
+  const autocomplete = useActorAutocompleteFn()
 
-            if (items === undefined) {
-              return
-            }
+  const pal = usePalette('default')
+  const modeClass = useColorSchemeStyle('ProseMirror-light', 'ProseMirror-dark')
 
-            getImageFromUri(items, onPhotoPasted)
-          },
-          handleKeyDown: (_, event) => {
-            if ((event.metaKey || event.ctrlKey) && event.code === 'Enter') {
-              // Workaround relying on previous state from `setRichText` to
-              // get the updated text content during editor initialization
-              setRichText((state: RichText) => {
-                onPressPublish(state)
-                return state
-              })
-            }
-          },
+  const [isDropping, setIsDropping] = React.useState(false)
+
+  const extensions = React.useMemo(
+    () => [
+      Document,
+      LinkDecorator,
+      Mention.configure({
+        HTMLAttributes: {
+          class: 'mention',
         },
-        content: richtext.text.toString(),
-        autofocus: true,
-        editable: true,
-        injectCSS: true,
-        onUpdate({editor: editorProp}) {
-          const json = editorProp.getJSON()
+        suggestion: createSuggestion({autocomplete}),
+      }),
+      Paragraph,
+      Placeholder.configure({
+        placeholder,
+      }),
+      TiptapText,
+      History,
+      Hardbreak,
+    ],
+    [autocomplete, placeholder],
+  )
 
-          const newRt = new RichText({text: editorJsonToText(json).trim()})
-          setRichText(newRt)
+  React.useEffect(() => {
+    textInputWebEmitter.addListener('publish', onPressPublish)
+    return () => {
+      textInputWebEmitter.removeListener('publish', onPressPublish)
+    }
+  }, [onPressPublish])
+  React.useEffect(() => {
+    textInputWebEmitter.addListener('photo-pasted', onPhotoPasted)
+    return () => {
+      textInputWebEmitter.removeListener('photo-pasted', onPhotoPasted)
+    }
+  }, [onPhotoPasted])
 
-          const newSuggestedLinks = new Set(editorJsonToLinks(json))
-          if (!isEqual(newSuggestedLinks, suggestedLinks)) {
-            onSuggestedLinksChanged(newSuggestedLinks)
+  React.useEffect(() => {
+    const handleDrop = (event: DragEvent) => {
+      const transfer = event.dataTransfer
+      if (transfer) {
+        const items = transfer.items
+
+        getImageFromUri(items, (uri: string) => {
+          textInputWebEmitter.emit('photo-pasted', uri)
+        })
+      }
+
+      event.preventDefault()
+      setIsDropping(false)
+    }
+    const handleDragEnter = (event: DragEvent) => {
+      const transfer = event.dataTransfer
+
+      event.preventDefault()
+      if (transfer && transfer.types.includes('Files')) {
+        setIsDropping(true)
+      }
+    }
+    const handleDragLeave = (event: DragEvent) => {
+      event.preventDefault()
+      setIsDropping(false)
+    }
+
+    document.body.addEventListener('drop', handleDrop)
+    document.body.addEventListener('dragenter', handleDragEnter)
+    document.body.addEventListener('dragover', handleDragEnter)
+    document.body.addEventListener('dragleave', handleDragLeave)
+
+    return () => {
+      document.body.removeEventListener('drop', handleDrop)
+      document.body.removeEventListener('dragenter', handleDragEnter)
+      document.body.removeEventListener('dragover', handleDragEnter)
+      document.body.removeEventListener('dragleave', handleDragLeave)
+    }
+  }, [setIsDropping])
+
+  const editor = useEditor(
+    {
+      extensions,
+      editorProps: {
+        attributes: {
+          class: modeClass,
+        },
+        handlePaste: (_, event) => {
+          const items = event.clipboardData?.items
+
+          if (items === undefined) {
+            return
+          }
+
+          getImageFromUri(items, (uri: string) => {
+            textInputWebEmitter.emit('photo-pasted', uri)
+          })
+        },
+        handleKeyDown: (_, event) => {
+          if ((event.metaKey || event.ctrlKey) && event.code === 'Enter') {
+            textInputWebEmitter.emit('publish')
+            return true
           }
         },
       },
-      [modeClass],
-    )
+      content: generateJSON(richtext.text.toString(), extensions),
+      autofocus: 'end',
+      editable: true,
+      injectCSS: true,
+      onCreate({editor: editorProp}) {
+        // HACK
+        // the 'enter' animation sometimes causes autofocus to fail
+        // (see Composer.web.tsx in shell)
+        // so we wait 200ms (the anim is 150ms) and then focus manually
+        // -prf
+        setTimeout(() => {
+          editorProp.chain().focus('end').run()
+        }, 200)
+      },
+      onUpdate({editor: editorProp}) {
+        const json = editorProp.getJSON()
 
-    React.useImperativeHandle(ref, () => ({
-      focus: () => {}, // TODO
-      blur: () => {}, // TODO
-    }))
+        const newRt = new RichText({text: editorJsonToText(json).trimEnd()})
+        newRt.detectFacetsWithoutResolution()
+        setRichText(newRt)
 
-    return (
+        const set: Set<string> = new Set()
+
+        if (newRt.facets) {
+          for (const facet of newRt.facets) {
+            for (const feature of facet.features) {
+              if (AppBskyRichtextFacet.isLink(feature)) {
+                set.add(feature.uri)
+              }
+            }
+          }
+        }
+
+        if (!isEqual(set, suggestedLinks)) {
+          onSuggestedLinksChanged(set)
+        }
+      },
+    },
+    [modeClass],
+  )
+
+  const onEmojiInserted = React.useCallback(
+    (emoji: Emoji) => {
+      editor?.chain().focus().insertContent(emoji.native).run()
+    },
+    [editor],
+  )
+  React.useEffect(() => {
+    textInputWebEmitter.addListener('emoji-inserted', onEmojiInserted)
+    return () => {
+      textInputWebEmitter.removeListener('emoji-inserted', onEmojiInserted)
+    }
+  }, [onEmojiInserted])
+
+  React.useImperativeHandle(ref, () => ({
+    focus: () => {}, // TODO
+    blur: () => {}, // TODO
+    getCursorPosition: () => {
+      const pos = editor?.state.selection.$anchor.pos
+      return pos ? editor?.view.coordsAtPos(pos) : undefined
+    },
+  }))
+
+  return (
+    <>
       <View style={styles.container}>
         <EditorContent editor={editor} />
       </View>
-    )
-  },
-)
+
+      {isDropping && (
+        <Portal>
+          <Animated.View
+            style={styles.dropContainer}
+            entering={FadeIn.duration(80)}
+            exiting={FadeOut.duration(80)}>
+            <View style={[pal.view, pal.border, styles.dropModal]}>
+              <Text
+                type="lg"
+                style={[pal.text, pal.borderDark, styles.dropText]}>
+                <Trans>Drop to add images</Trans>
+              </Text>
+            </View>
+          </Animated.View>
+        </Portal>
+      )}
+    </>
+  )
+})
 
 function editorJsonToText(json: JSONContent): string {
   let text = ''
@@ -150,22 +270,6 @@ function editorJsonToText(json: JSONContent): string {
   return text
 }
 
-function editorJsonToLinks(json: JSONContent): string[] {
-  let links: string[] = []
-  if (json.content?.length) {
-    for (const node of json.content) {
-      links = links.concat(editorJsonToLinks(node))
-    }
-  }
-
-  const link = json.marks?.find(m => m.type === 'link')
-  if (link?.attrs?.href) {
-    links.push(link.attrs.href)
-  }
-
-  return links
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -173,6 +277,33 @@ const styles = StyleSheet.create({
     padding: 5,
     marginLeft: 8,
     marginBottom: 10,
+  },
+  dropContainer: {
+    backgroundColor: '#0007',
+    pointerEvents: 'none',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // @ts-ignore web only -prf
+    position: 'fixed',
+    padding: 16,
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  dropModal: {
+    // @ts-ignore web only
+    boxShadow: 'rgba(0, 0, 0, 0.3) 0px 5px 20px',
+    padding: 8,
+    borderWidth: 1,
+    borderRadius: 16,
+  },
+  dropText: {
+    paddingVertical: 44,
+    paddingHorizontal: 36,
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    borderWidth: 2,
   },
 })
 
@@ -182,25 +313,25 @@ function getImageFromUri(
 ) {
   for (let index = 0; index < items.length; index++) {
     const item = items[index]
-    const {kind, type} = item
+    const type = item.type
 
     if (type === 'text/plain') {
+      console.log('hit')
       item.getAsString(async itemString => {
         if (isUriImage(itemString)) {
           const response = await fetch(itemString)
           const blob = await response.blob()
-          blobToDataUri(blob).then(callback, err => console.error(err))
+
+          if (blob.type.startsWith('image/')) {
+            blobToDataUri(blob).then(callback, err => console.error(err))
+          }
         }
       })
-    }
-
-    if (kind === 'file') {
+    } else if (type.startsWith('image/')) {
       const file = item.getAsFile()
 
-      if (file instanceof Blob) {
-        blobToDataUri(new Blob([file], {type: item.type})).then(callback, err =>
-          console.error(err),
-        )
+      if (file) {
+        blobToDataUri(file).then(callback, err => console.error(err))
       }
     }
   }

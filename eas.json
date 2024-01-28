@@ -4,25 +4,31 @@
     "promptToConfigurePushNotifications": false
   },
   "build": {
+    "base": {
+      "node": "18.18.2"
+    },
     "development": {
+      "extends": "base",
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "ios": {
         "simulator": true,
-        "resourceClass": "medium"
-      },
-      "channel": "development"
+        "resourceClass": "large"
+      }
     },
     "preview": {
+      "extends": "base",
       "distribution": "internal",
+      "channel": "preview",
       "ios": {
-        "resourceClass": "medium"
-      },
-      "channel": "preview"
+        "resourceClass": "large"
+      }
     },
     "production": {
+      "extends": "base",
       "ios": {
-        "resourceClass": "medium"
+        "resourceClass": "large"
       },
       "channel": "production"
     }

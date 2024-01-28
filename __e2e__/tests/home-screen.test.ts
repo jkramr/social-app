@@ -1,17 +1,35 @@
 /* eslint-env detox/detox */
 
-import {openApp, login, createServer} from '../util'
+import {describe, beforeAll, it} from '@jest/globals'
+import {expect} from 'detox'
+import {openApp, loginAsAlice, createServer} from '../util'
 
 describe('Home screen', () => {
-  let service: string
   beforeAll(async () => {
-    service = await createServer('?users&follows&posts')
+    await createServer('?users&follows&posts&feeds')
     await openApp({permissions: {notifications: 'YES'}})
   })
 
   it('Login', async () => {
-    await login(service, 'alice', 'hunter2')
+    await loginAsAlice()
     await element(by.id('homeScreenFeedTabs-Following')).tap()
+  })
+
+  it('Can go to feeds page using feeds button in tab bar', async () => {
+    await element(by.id('homeScreenFeedTabs-Feeds ✨')).tap()
+    await expect(element(by.text('Discover new feeds'))).toBeVisible()
+  })
+
+  it('Feeds button disappears after pinning a feed', async () => {
+    await element(by.id('bottomBarProfileBtn')).tap()
+    await element(by.id('profilePager-selector')).swipe('left')
+    await element(by.id('profilePager-selector-4')).tap()
+    await element(by.id('feed-alice-favs')).tap()
+    await element(by.id('pinBtn')).tap()
+    await element(by.id('bottomBarHomeBtn')).tap()
+    await expect(
+      element(by.id('homeScreenFeedTabs-Feeds ✨')),
+    ).not.toBeVisible()
   })
 
   it('Can like posts', async () => {
@@ -56,24 +74,24 @@ describe('Home screen', () => {
       .atIndex(0)
       .tap()
     await element(by.text('Report post')).tap()
-    await expect(element(by.id('reportPostModal'))).toBeVisible()
+    await expect(element(by.id('reportModal'))).toBeVisible()
     await element(
-      by.id('reportPostRadios-com.atproto.moderation.defs#reasonSpam'),
+      by.id('reportReasonRadios-com.atproto.moderation.defs#reasonSpam'),
     ).tap()
     await element(by.id('sendReportBtn')).tap()
-    await expect(element(by.id('reportPostModal'))).not.toBeVisible()
+    await expect(element(by.id('reportModal'))).not.toBeVisible()
   })
 
   it('Can swipe between feeds', async () => {
     await element(by.id('homeScreen')).swipe('left', 'fast', 0.75)
-    await expect(element(by.id('whatshotFeedPage'))).toBeVisible()
+    await expect(element(by.id('customFeedPage'))).toBeVisible()
     await element(by.id('homeScreen')).swipe('right', 'fast', 0.75)
     await expect(element(by.id('followingFeedPage'))).toBeVisible()
   })
 
   it('Can tap between feeds', async () => {
-    await element(by.id("homeScreenFeedTabs-What's hot")).tap()
-    await expect(element(by.id('whatshotFeedPage'))).toBeVisible()
+    await element(by.id('homeScreenFeedTabs-alice-favs')).tap()
+    await expect(element(by.id('customFeedPage'))).toBeVisible()
     await element(by.id('homeScreenFeedTabs-Following')).tap()
     await expect(element(by.id('followingFeedPage'))).toBeVisible()
   })

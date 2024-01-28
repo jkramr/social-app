@@ -1,11 +1,15 @@
 import React from 'react'
-import {observer} from 'mobx-react-lite'
 import {StatusBar} from 'expo-status-bar'
-import {StyleSheet, useWindowDimensions, View} from 'react-native'
+import {
+  DimensionValue,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+  BackHandler,
+} from 'react-native'
 import {useSafeAreaInsets} from 'react-native-safe-area-context'
 import {Drawer} from 'react-native-drawer-layout'
 import {useNavigationState} from '@react-navigation/native'
-import {useStores} from 'state/index'
 import {ModalsContainer} from 'view/com/modals/Modal'
 import {Lightbox} from 'view/com/lightbox/Lightbox'
 import {ErrorBoundary} from 'view/com/util/ErrorBoundary'
@@ -13,34 +17,66 @@ import {DrawerContent} from './Drawer'
 import {Composer} from './Composer'
 import {useTheme} from 'lib/ThemeContext'
 import {usePalette} from 'lib/hooks/usePalette'
-import * as backHandler from 'lib/routes/back-handler'
 import {RoutesContainer, TabsNavigator} from '../../Navigation'
 import {isStateAtTabRoot} from 'lib/routes/helpers'
-import {SafeAreaProvider} from 'react-native-safe-area-context'
-import {useOTAUpdate} from 'lib/hooks/useOTAUpdate'
+import {
+  useIsDrawerOpen,
+  useSetDrawerOpen,
+  useIsDrawerSwipeDisabled,
+} from '#/state/shell'
+import {isAndroid} from 'platform/detection'
+import {useSession} from '#/state/session'
+import {useCloseAnyActiveElement} from '#/state/util'
+import * as notifications from 'lib/notifications/notifications'
+import {Outlet as PortalOutlet} from '#/components/Portal'
 
-const ShellInner = observer(() => {
-  const store = useStores()
-  useOTAUpdate() // this hook polls for OTA updates every few seconds
+function ShellInner() {
+  const isDrawerOpen = useIsDrawerOpen()
+  const isDrawerSwipeDisabled = useIsDrawerSwipeDisabled()
+  const setIsDrawerOpen = useSetDrawerOpen()
   const winDim = useWindowDimensions()
   const safeAreaInsets = useSafeAreaInsets()
   const containerPadding = React.useMemo(
-    () => ({height: '100%', paddingTop: safeAreaInsets.top}),
+    () => ({height: '100%' as DimensionValue, paddingTop: safeAreaInsets.top}),
     [safeAreaInsets],
   )
   const renderDrawerContent = React.useCallback(() => <DrawerContent />, [])
   const onOpenDrawer = React.useCallback(
-    () => store.shell.openDrawer(),
-    [store],
+    () => setIsDrawerOpen(true),
+    [setIsDrawerOpen],
   )
   const onCloseDrawer = React.useCallback(
-    () => store.shell.closeDrawer(),
-    [store],
+    () => setIsDrawerOpen(false),
+    [setIsDrawerOpen],
   )
   const canGoBack = useNavigationState(state => !isStateAtTabRoot(state))
+  const {hasSession, currentAccount} = useSession()
+  const closeAnyActiveElement = useCloseAnyActiveElement()
+
   React.useEffect(() => {
-    backHandler.init(store)
-  }, [store])
+    let listener = {remove() {}}
+    if (isAndroid) {
+      listener = BackHandler.addEventListener('hardwareBackPress', () => {
+        return closeAnyActiveElement()
+      })
+    }
+    return () => {
+      listener.remove()
+    }
+  }, [closeAnyActiveElement])
+
+  React.useEffect(() => {
+    if (currentAccount) {
+      notifications.requestPermissionsAndRegisterToken(currentAccount)
+    }
+  }, [currentAccount])
+
+  React.useEffect(() => {
+    if (currentAccount) {
+      const unsub = notifications.registerTokenChangeHandler(currentAccount)
+      return unsub
+    }
+  }, [currentAccount])
 
   return (
     <>
@@ -48,47 +84,35 @@ const ShellInner = observer(() => {
         <ErrorBoundary>
           <Drawer
             renderDrawerContent={renderDrawerContent}
-            open={store.shell.isDrawerOpen}
+            open={isDrawerOpen}
             onOpen={onOpenDrawer}
             onClose={onCloseDrawer}
             swipeEdgeWidth={winDim.width / 2}
-            swipeEnabled={
-              !canGoBack &&
-              store.session.hasSession &&
-              !store.shell.isDrawerSwipeDisabled
-            }>
+            swipeEnabled={!canGoBack && hasSession && !isDrawerSwipeDisabled}>
             <TabsNavigator />
           </Drawer>
         </ErrorBoundary>
       </View>
-      <Composer
-        active={store.shell.isComposerActive}
-        onClose={() => store.shell.closeComposer()}
-        winHeight={winDim.height}
-        replyTo={store.shell.composerOpts?.replyTo}
-        onPost={store.shell.composerOpts?.onPost}
-        quote={store.shell.composerOpts?.quote}
-      />
+      <Composer winHeight={winDim.height} />
       <ModalsContainer />
+      <PortalOutlet />
       <Lightbox />
     </>
   )
-})
+}
 
-export const Shell: React.FC = observer(() => {
+export const Shell: React.FC = function ShellImpl() {
   const pal = usePalette('default')
   const theme = useTheme()
   return (
-    <SafeAreaProvider style={pal.view}>
-      <View testID="mobileShellView" style={[styles.outerContainer, pal.view]}>
-        <StatusBar style={theme.colorScheme === 'dark' ? 'light' : 'dark'} />
-        <RoutesContainer>
-          <ShellInner />
-        </RoutesContainer>
-      </View>
-    </SafeAreaProvider>
+    <View testID="mobileShellView" style={[styles.outerContainer, pal.view]}>
+      <StatusBar style={theme.colorScheme === 'dark' ? 'light' : 'dark'} />
+      <RoutesContainer>
+        <ShellInner />
+      </RoutesContainer>
+    </View>
   )
-})
+}
 
 const styles = StyleSheet.create({
   outerContainer: {

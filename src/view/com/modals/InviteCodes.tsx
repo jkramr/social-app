@@ -1,6 +1,11 @@
 import React from 'react'
-import {StyleSheet, TouchableOpacity, View} from 'react-native'
-import {observer} from 'mobx-react-lite'
+import {
+  StyleSheet,
+  TouchableOpacity,
+  View,
+  ActivityIndicator,
+} from 'react-native'
+import {ComAtprotoServerDefs} from '@atproto/api'
 import {
   FontAwesomeIcon,
   FontAwesomeIconStyle,
@@ -9,35 +14,70 @@ import Clipboard from '@react-native-clipboard/clipboard'
 import {Text} from '../util/text/Text'
 import {Button} from '../util/forms/Button'
 import * as Toast from '../util/Toast'
-import {useStores} from 'state/index'
 import {ScrollView} from './util'
 import {usePalette} from 'lib/hooks/usePalette'
-import {isDesktopWeb} from 'platform/detection'
+import {isWeb} from 'platform/detection'
+import {useWebMediaQueries} from 'lib/hooks/useWebMediaQueries'
+import {Trans, msg} from '@lingui/macro'
+import {cleanError} from 'lib/strings/errors'
+import {useModalControls} from '#/state/modals'
+import {useInvitesState, useInvitesAPI} from '#/state/invites'
+import {UserInfoText} from '../util/UserInfoText'
+import {makeProfileLink} from '#/lib/routes/links'
+import {Link} from '../util/Link'
+import {ErrorMessage} from '../util/error/ErrorMessage'
+import {
+  useInviteCodesQuery,
+  InviteCodesQueryResponse,
+} from '#/state/queries/invites'
+import {useLingui} from '@lingui/react'
 
 export const snapPoints = ['70%']
 
-export function Component({}: {}) {
+export function Component() {
+  const {isLoading, data: invites, error} = useInviteCodesQuery()
+
+  return error ? (
+    <ErrorMessage message={cleanError(error)} />
+  ) : isLoading || !invites ? (
+    <View style={{padding: 18}}>
+      <ActivityIndicator />
+    </View>
+  ) : (
+    <Inner invites={invites} />
+  )
+}
+
+export function Inner({invites}: {invites: InviteCodesQueryResponse}) {
   const pal = usePalette('default')
-  const store = useStores()
+  const {_} = useLingui()
+  const {closeModal} = useModalControls()
+  const {isTabletOrDesktop} = useWebMediaQueries()
 
   const onClose = React.useCallback(() => {
-    store.shell.closeModal()
-  }, [store])
+    closeModal()
+  }, [closeModal])
 
-  if (store.me.invites.length === 0) {
+  if (invites.all.length === 0) {
     return (
       <View style={[styles.container, pal.view]} testID="inviteCodesModal">
         <View style={[styles.empty, pal.viewLight]}>
           <Text type="lg" style={[pal.text, styles.emptyText]}>
-            You don't have any invite codes yet! We'll send you some when you've
-            been on Bluesky for a little longer.
+            <Trans>
+              You don't have any invite codes yet! We'll send you some when
+              you've been on Bluesky for a little longer.
+            </Trans>
           </Text>
         </View>
         <View style={styles.flex1} />
-        <View style={styles.btnContainer}>
+        <View
+          style={[
+            styles.btnContainer,
+            isTabletOrDesktop && styles.btnContainerDesktop,
+          ]}>
           <Button
             type="primary"
-            label="Done"
+            label={_(msg`Done`)}
             style={styles.btn}
             labelStyle={styles.btnLabel}
             onPress={onClose}
@@ -50,22 +90,29 @@ export function Component({}: {}) {
   return (
     <View style={[styles.container, pal.view]} testID="inviteCodesModal">
       <Text type="title-xl" style={[styles.title, pal.text]}>
-        Invite a Friend
+        <Trans>Invite a Friend</Trans>
       </Text>
       <Text type="lg" style={[styles.description, pal.text]}>
-        Send these invites to your friends so they can create an account. Each
-        code works once!
-      </Text>
-      <Text type="sm" style={[styles.description, pal.textLight]}>
-        (You'll receive one invite code every two weeks.)
+        <Trans>
+          Each code works once. You'll receive more invite codes periodically.
+        </Trans>
       </Text>
       <ScrollView style={[styles.scrollContainer, pal.border]}>
-        {store.me.invites.map((invite, i) => (
+        {invites.available.map((invite, i) => (
           <InviteCode
             testID={`inviteCode-${i}`}
             key={invite.code}
-            code={invite.code}
-            used={invite.available - invite.uses.length <= 0 || invite.disabled}
+            invite={invite}
+            invites={invites}
+          />
+        ))}
+        {invites.used.map((invite, i) => (
+          <InviteCode
+            used
+            testID={`inviteCode-${i}`}
+            key={invite.code}
+            invite={invite}
+            invites={invites}
           />
         ))}
       </ScrollView>
@@ -73,7 +120,7 @@ export function Component({}: {}) {
         <Button
           testID="closeBtn"
           type="primary"
-          label="Done"
+          label={_(msg`Done`)}
           style={styles.btn}
           labelStyle={styles.btnLabel}
           onPress={onClose}
@@ -83,39 +130,57 @@ export function Component({}: {}) {
   )
 }
 
-const InviteCode = observer(
-  ({testID, code, used}: {testID: string; code: string; used?: boolean}) => {
-    const pal = usePalette('default')
-    const store = useStores()
-    const {invitesAvailable} = store.me
+function InviteCode({
+  testID,
+  invite,
+  used,
+  invites,
+}: {
+  testID: string
+  invite: ComAtprotoServerDefs.InviteCode
+  used?: boolean
+  invites: InviteCodesQueryResponse
+}) {
+  const pal = usePalette('default')
+  const {_} = useLingui()
+  const invitesState = useInvitesState()
+  const {setInviteCopied} = useInvitesAPI()
+  const uses = invite.uses
 
-    const onPress = React.useCallback(() => {
-      Clipboard.setString(code)
-      Toast.show('Copied to clipboard')
-      store.invitedUsers.setInviteCopied(code)
-    }, [store, code])
+  const onPress = React.useCallback(() => {
+    Clipboard.setString(invite.code)
+    Toast.show(_(msg`Copied to clipboard`))
+    setInviteCopied(invite.code)
+  }, [setInviteCopied, invite, _])
 
-    return (
+  return (
+    <View
+      style={[
+        pal.border,
+        {borderBottomWidth: 1, paddingHorizontal: 20, paddingVertical: 14},
+      ]}>
       <TouchableOpacity
         testID={testID}
-        style={[styles.inviteCode, pal.border]}
+        style={[styles.inviteCode]}
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={
-          invitesAvailable === 1
-            ? 'Invite codes: 1 available'
-            : `Invite codes: ${invitesAvailable} available`
+          invites.available.length === 1
+            ? _(msg`Invite codes: 1 available`)
+            : _(msg`Invite codes: ${invites.available.length} available`)
         }
-        accessibilityHint="Opens list of invite codes">
+        accessibilityHint={_(msg`Opens list of invite codes`)}>
         <Text
           testID={`${testID}-code`}
           type={used ? 'md' : 'md-bold'}
           style={used ? [pal.textLight, styles.strikeThrough] : pal.text}>
-          {code}
+          {invite.code}
         </Text>
         <View style={styles.flex1} />
-        {!used && store.invitedUsers.isInviteCopied(code) && (
-          <Text style={[pal.textLight, styles.codeCopied]}>Copied</Text>
+        {!used && invitesState.copiedInvites.includes(invite.code) && (
+          <Text style={[pal.textLight, styles.codeCopied]}>
+            <Trans>Copied</Trans>
+          </Text>
         )}
         {!used && (
           <FontAwesomeIcon
@@ -124,14 +189,37 @@ const InviteCode = observer(
           />
         )}
       </TouchableOpacity>
-    )
-  },
-)
+      {uses.length > 0 ? (
+        <View
+          style={{
+            flexDirection: 'column',
+            gap: 8,
+            paddingTop: 6,
+          }}>
+          <Text style={pal.text}>
+            <Trans>Used by:</Trans>{' '}
+            {uses.map((use, i) => (
+              <Link
+                key={use.usedBy}
+                href={makeProfileLink({handle: use.usedBy, did: ''})}
+                style={{
+                  flexDirection: 'row',
+                }}>
+                <UserInfoText did={use.usedBy} style={pal.link} />
+                {i !== uses.length - 1 && <Text style={pal.text}>, </Text>}
+              </Link>
+            ))}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  )
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingBottom: isDesktopWeb ? 0 : 50,
+    paddingBottom: isWeb ? 0 : 50,
   },
   title: {
     textAlign: 'center',
@@ -168,9 +256,6 @@ const styles = StyleSheet.create({
   inviteCode: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
   },
   codeCopied: {
     marginRight: 8,
@@ -183,6 +268,9 @@ const styles = StyleSheet.create({
   btnContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
+  },
+  btnContainerDesktop: {
+    marginTop: 14,
   },
   btn: {
     flexDirection: 'row',

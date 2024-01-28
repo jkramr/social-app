@@ -2,23 +2,26 @@
 
 ## App Build
 
-- Setup your environment [using the react native instructions](https://reactnative.dev/docs/environment-setup).
+- Set up your environment [using the react native instructions](https://reactnative.dev/docs/environment-setup).
 - Setup your environment [for e2e testing using detox](https://wix.github.io/Detox/docs/introduction/getting-started):
   - yarn global add detox-cli
   - brew tap wix/brew
   - brew install applesimutils
 - After initial setup:
-  - `npx expo prebuild` -> you will also need to run this anytime `app.json` or `package.json` changes
+  - Copy `google-services.json.example` to `google-services.json` or provide your own `google-services.json`. (A real firebase project is NOT required)
+  - `npx expo prebuild` -> you will also need to run this anytime `app.json` or native `package.json` deps change
+  - `yarn intl:build` -> you will also need to run this anytime `./src/locale/{locale}/messages.po` change
 - Start the dev servers
   - `git clone git@github.com:bluesky-social/atproto.git`
   - `cd atproto`
-  - `yarn`
-  - `cd packages/dev-env && yarn start`
+  - `pnpm i`
+  - `pnpm build`
+  - `cd packages/dev-env && pnpm start`
 - Run the dev app
   - iOS: `yarn ios`
   - Android: `yarn android`
   - Web: `yarn web`
-- If you are cloning or forking this repo as an open source developer, please check the tips below as well
+- If you are cloning or forking this repo as an open-source developer, please check the tips below as well
 - Run e2e tests
   - Start in various console tabs:
     - `yarn e2e:mock-server`
@@ -26,20 +29,22 @@
   - Run once: `yarn e2e:build`
   - Each test run: `yarn e2e:run`
 - Tips
-  - Make sure you copy the `.env.example` to `.env` and add the appropriate tokens (e.g. `SENTRY_AUTH_TOKEN` can be created on the Sentry dashboard using [these instructions](https://docs.expo.dev/guides/using-sentry/#sign-up-for-a-sentry-account-and-create-a-project)). If this is not required, you can remove it from `eas.json` and `package.json`, as well as any mentions in the code. Please check the section below on how to remove Sentry from the codebase
-  - If you want to use Expo EAS on your own builds without ejecting from Expo, make sure to change the `owner` as well as `extra.eas.projectId` properties. If you do not have an Expo account, you may remove these properties.
+  - Copy the `.env.example` to `.env` and fill in any necessary tokens. (The Sentry token is NOT required; see instructions below if you want to enable Sentry.)
+  - To run on the device, add `--device` to the command (e.g. `yarn android --device`). To build in production mode (slower build, faster app), also add `--variant release`.
+  - If you want to use Expo EAS on your own builds without ejecting from Expo, make sure to change the `owner` and `extra.eas.projectId` properties. If you do not have an Expo account, you may remove these properties.
   - `npx react-native info` Checks what has been installed.
-  - The android simulator won't be able to access localhost services unless you run `adb reverse tcp:{PORT} tcp:{PORT}`
+  - If the Android simulator frequently hangs or is very sluggish, [bump its memory limit](https://stackoverflow.com/a/40068396)
+  - The Android simulator won't be able to access localhost services unless you run `adb reverse tcp:{PORT} tcp:{PORT}`
     - For instance, the locally-hosted dev-wallet will need `adb reverse tcp:3001 tcp:3001`
-  - For some reason, the typescript compiler chokes on platform-specific files (e.g. `foo.native.ts`) but only when compiling for Web thus far. Therefore we always have one version of the file which doesn't use a platform specifier, and that should be the Web version. ([More info](https://stackoverflow.com/questions/44001050/platform-specific-import-component-in-react-native-with-typescript).)
+  - For some reason, the typescript compiler chokes on platform-specific files (e.g. `foo.native.ts`) but only when compiling for Web thus far. Therefore we always have one version of the file that doesn't use a platform specifier, and that should be the Web version. ([More info](https://stackoverflow.com/questions/44001050/platform-specific-import-component-in-react-native-with-typescript).)
 
-### Removing Sentry
-If you are part of the Bluesky team, you should have access to our Sentry dashboard, and you shouldn't need to remove Sentry. Even if you are not part of the Bluesky team, you can create your own Sentry account and add the `SENTRY_AUTH_TOKEN` env var and add your sentry account detials to `app.json` to make the app build and run successfully. However, if that is not possible, follow these steps to remove Sentry from the project (please don't commit this code in any PR):
-- `yarn remove sentry-expo @sentry/react-native`
-- Remove `sentry-expo` plugin in `app.json` and also remove the `postPublish` hook in `app.json`
-- Remove any mentions of `sentry` from the `App.native.tsx`, `App.web.tsx` and `Navigation.tsx` files. Also, delete `sentry.ts`
-- Run `rm -rf ios android` or delete the existing `android` and `ios` folders in the project (don't worry! `yarn prebuild` gets these back)
-- Run `yarn prebuild` and `yarn ios` and build the app!
+### Adding Sentry
+
+Adding Sentry is NOT required. You can keep `SENTRY_AUTH_TOKEN=` in `.env` which will build the app without Sentry.
+
+However, if you're a part of the Bluesky team and want to enable Sentry, fill in `SENTRY_AUTH_TOKEN` in your `.env`. It can be created on the Sentry dashboard using [these instructions](https://docs.expo.dev/guides/using-sentry/#sign-up-for-a-sentry-account-and-create-a-project).
+
+If you change `SENTRY_AUTH_TOKEN`, you need to do `yarn prebuild` before running `yarn ios` or `yarn android` again.
 
 ## Go-Server Build
 
@@ -77,24 +82,24 @@ To open the [Developer Menu](https://docs.expo.dev/debugging/tools/#developer-me
 - Android Device: Shake the device vertically, or if your device is connected via USB, run adb shell input keyevent 82 in your terminal
 - Android Emulator: Either press Cmd ⌘ + m or Ctrl + m or run adb shell input keyevent 82 in your terminal
 - iOS Device: Shake the device, or touch 3 fingers to the screen
-- iOS Simulator: Press Ctrl + Cmd ⌘ + z on a Mac in the emulator to simulate the shake gesture, or press Cmd ⌘ + d
+- iOS Simulator: Press Ctrl + Cmd ⌘ + z on a Mac in the emulator to simulate the shake gesture or press Cmd ⌘ + d
 
 ### Running E2E Tests
 
-- Make sure you've setup your environment following above
+- Make sure you've set your environment following the above
 - Make sure Metro and the dev server are running
 - Run `yarn e2e`
 - Find the artifacts in the `artifact` folder
 
 ### Polyfills
 
-`./platform/polyfills.*.ts` adds polyfills to the environment. Currently this includes:
+`./platform/polyfills.*.ts` adds polyfills to the environment. Currently, this includes:
 
 - TextEncoder / TextDecoder
 
 ### Sentry sourcemaps
 
-Sourcemaps should automatically be updated when a signed build is created using `eas build` and published using `eas submit` due to the postPublish hook setup in `app.json`. However, if an update is created and published OTA using `eas update`, we need to the take the following steps to upload sourcemaps to Sentry:
+Sourcemaps should automatically be updated when a signed build is created using `eas build` and published using `eas submit` due to the postPublish hook setup in `app.json`. However, if an update is created and published OTA using `eas update`, we need to take the following steps to upload sourcemaps to Sentry:
 
 - Run eas update. This will generate a dist folder in your project root, which contains your JavaScript bundles and source maps. This command will also output the 'Android update ID' and 'iOS update ID' that we'll need in the next step.
 - Copy or rename the bundle names in the `dist/bundles` folder to match `index.android.bundle` (Android) or `main.jsbundle` (iOS).
@@ -117,6 +122,7 @@ upload-sourcemaps \
 dist/bundles/main.jsbundle dist/bundles/ios-<hash>.map`
 
 ### OTA updates
-To create OTA updates, run `eas update` along with the `--branch` flag to indicate which branch you want to push the update to, and the `--message` flag to indicate a message for yourself and your team that shows up on https://expo.dev. ALl the channels (which make up the options for the `--branch` flag) are given in `eas.json`. [See more here](https://docs.expo.dev/eas-update/getting-started/)
 
-The clients which can receive an OTA update is governed by the `runtimeVersion` property in `app.json`. Right now, it is set so that only apps with the same `appVersion` (same as `version` property in `app.json`) can receive the update and install it. However, we can manually set `"runtimeVersion": "1.34.0"` or anything along those lines as well. This is useful if very little native code changes from update-to-update. If we are manually setting `runtimeVersion`, we should increment the version each time native code is changed. [See more here](https://docs.expo.dev/eas-update/runtime-versions/)
+To create OTA updates, run `eas update` along with the `--branch` flag to indicate which branch you want to push the update to, and the `--message` flag to indicate a message for yourself and your team that shows up on https://expo.dev. All the channels (which make up the options for the `--branch` flag) are given in `eas.json`. [See more here](https://docs.expo.dev/eas-update/getting-started/)
+
+The clients which can receive an OTA update are governed by the `runtimeVersion` property in `app.json`. Right now, it is set so that only apps with the same `appVersion` (same as `version` property in `app.json`) can receive the update and install it. However, we can manually set `"runtimeVersion": "1.34.0"` or anything along those lines as well. This is useful if very little native code changes from update to update. If we are manually setting `runtimeVersion`, we should increment the version each time the native code is changed. [See more here](https://docs.expo.dev/eas-update/runtime-versions/)

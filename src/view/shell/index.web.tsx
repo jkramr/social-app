@@ -1,9 +1,5 @@
 import React, {useEffect} from 'react'
-import {observer} from 'mobx-react-lite'
 import {View, StyleSheet, TouchableOpacity} from 'react-native'
-import {useStores} from 'state/index'
-import {DesktopLeftNav} from './desktop/LeftNav'
-import {DesktopRightNav} from './desktop/RightNav'
 import {ErrorBoundary} from '../com/util/ErrorBoundary'
 import {Lightbox} from '../com/lightbox/Lightbox'
 import {ModalsContainer} from '../com/modals/Modal'
@@ -13,52 +9,47 @@ import {s, colors} from 'lib/styles'
 import {RoutesContainer, FlatNavigator} from '../../Navigation'
 import {DrawerContent} from './Drawer'
 import {useWebMediaQueries} from '../../lib/hooks/useWebMediaQueries'
-import {BottomBarWeb} from './bottom-bar/BottomBarWeb'
 import {useNavigation} from '@react-navigation/native'
 import {NavigationProp} from 'lib/routes/types'
+import {useAuxClick} from 'lib/hooks/useAuxClick'
+import {t} from '@lingui/macro'
+import {useIsDrawerOpen, useSetDrawerOpen} from '#/state/shell'
+import {useCloseAllActiveElements} from '#/state/util'
+import {useWebBodyScrollLock} from '#/lib/hooks/useWebBodyScrollLock'
+import {Outlet as PortalOutlet} from '#/components/Portal'
 
-const ShellInner = observer(() => {
-  const store = useStores()
+function ShellInner() {
+  const isDrawerOpen = useIsDrawerOpen()
+  const setDrawerOpen = useSetDrawerOpen()
   const {isDesktop} = useWebMediaQueries()
-
   const navigator = useNavigation<NavigationProp>()
+  const closeAllActiveElements = useCloseAllActiveElements()
+
+  useWebBodyScrollLock(isDrawerOpen)
+  useAuxClick()
 
   useEffect(() => {
-    navigator.addListener('state', () => {
-      store.shell.closeAnyActiveElement()
+    const unsubscribe = navigator.addListener('state', () => {
+      closeAllActiveElements()
     })
-  }, [navigator, store.shell])
+    return unsubscribe
+  }, [navigator, closeAllActiveElements])
 
   return (
     <>
-      <View style={s.hContentRegion}>
-        <ErrorBoundary>
-          <FlatNavigator />
-        </ErrorBoundary>
-      </View>
-      {isDesktop && store.session.hasSession && (
-        <>
-          <DesktopLeftNav />
-          <DesktopRightNav />
-        </>
-      )}
-      <Composer
-        active={store.shell.isComposerActive}
-        onClose={() => store.shell.closeComposer()}
-        winHeight={0}
-        replyTo={store.shell.composerOpts?.replyTo}
-        quote={store.shell.composerOpts?.quote}
-        onPost={store.shell.composerOpts?.onPost}
-      />
-      {!isDesktop && <BottomBarWeb />}
+      <ErrorBoundary>
+        <FlatNavigator />
+      </ErrorBoundary>
+      <Composer winHeight={0} />
       <ModalsContainer />
+      <PortalOutlet />
       <Lightbox />
-      {!isDesktop && store.shell.isDrawerOpen && (
+      {!isDesktop && isDrawerOpen && (
         <TouchableOpacity
-          onPress={() => store.shell.closeDrawer()}
+          onPress={() => setDrawerOpen(false)}
           style={styles.drawerMask}
-          accessibilityLabel="Close navigation footer"
-          accessibilityHint="Closes bottom navigation bar">
+          accessibilityLabel={t`Close navigation footer`}
+          accessibilityHint={t`Closes bottom navigation bar`}>
           <View style={styles.drawerContainer}>
             <DrawerContent />
           </View>
@@ -66,9 +57,9 @@ const ShellInner = observer(() => {
       )}
     </>
   )
-})
+}
 
-export const Shell: React.FC = observer(() => {
+export const Shell: React.FC = function ShellImpl() {
   const pageBg = useColorSchemeStyle(styles.bgLight, styles.bgDark)
   return (
     <View style={[s.hContentRegion, pageBg]}>
@@ -77,7 +68,7 @@ export const Shell: React.FC = observer(() => {
       </RoutesContainer>
     </View>
   )
-})
+}
 
 const styles = StyleSheet.create({
   bgLight: {
@@ -87,7 +78,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.black, // TODO
   },
   drawerMask: {
-    position: 'absolute',
+    // @ts-ignore web only
+    position: 'fixed',
     width: '100%',
     height: '100%',
     top: 0,
@@ -96,7 +88,8 @@ const styles = StyleSheet.create({
   },
   drawerContainer: {
     display: 'flex',
-    position: 'absolute',
+    // @ts-ignore web only
+    position: 'fixed',
     top: 0,
     left: 0,
     height: '100%',

@@ -1,10 +1,7 @@
 import React from 'react'
-import {Pressable, StyleSheet, View} from 'react-native'
-import {observer} from 'mobx-react-lite'
+import {LayoutAnimation, StyleSheet, View} from 'react-native'
 import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome'
 import ImageView from './ImageViewing'
-import {useStores} from 'state/index'
-import * as models from 'state/models/ui/shell'
 import {shareImageModal, saveImageToMediaLibrary} from 'lib/media/manip'
 import * as Toast from '../util/Toast'
 import {Text} from '../util/text/Text'
@@ -12,25 +9,68 @@ import {s, colors} from 'lib/styles'
 import {Button} from '../util/forms/Button'
 import {isIOS} from 'platform/detection'
 import * as MediaLibrary from 'expo-media-library'
+import {
+  useLightbox,
+  useLightboxControls,
+  ProfileImageLightbox,
+  ImagesLightbox,
+} from '#/state/lightbox'
+import {Trans, msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
 
-export const Lightbox = observer(function Lightbox() {
-  const store = useStores()
+export function Lightbox() {
+  const {activeLightbox} = useLightbox()
+  const {closeLightbox} = useLightboxControls()
+  const onClose = React.useCallback(() => {
+    closeLightbox()
+  }, [closeLightbox])
+
+  if (!activeLightbox) {
+    return null
+  } else if (activeLightbox.name === 'profile-image') {
+    const opts = activeLightbox as ProfileImageLightbox
+    return (
+      <ImageView
+        images={[{uri: opts.profile.avatar || ''}]}
+        initialImageIndex={0}
+        visible
+        onRequestClose={onClose}
+        FooterComponent={LightboxFooter}
+      />
+    )
+  } else if (activeLightbox.name === 'images') {
+    const opts = activeLightbox as ImagesLightbox
+    return (
+      <ImageView
+        images={opts.images.map(img => ({...img}))}
+        initialImageIndex={opts.index}
+        visible
+        onRequestClose={onClose}
+        FooterComponent={LightboxFooter}
+      />
+    )
+  } else {
+    return null
+  }
+}
+
+function LightboxFooter({imageIndex}: {imageIndex: number}) {
+  const {_} = useLingui()
+  const {activeLightbox} = useLightbox()
   const [isAltExpanded, setAltExpanded] = React.useState(false)
   const [permissionResponse, requestPermission] = MediaLibrary.usePermissions()
-
-  const onClose = React.useCallback(() => {
-    store.shell.closeLightbox()
-  }, [store])
 
   const saveImageToAlbumWithToasts = React.useCallback(
     async (uri: string) => {
       if (!permissionResponse || permissionResponse.granted === false) {
-        Toast.show('Permission to access camera roll is required.')
+        Toast.show(_(msg`Permission to access camera roll is required.`))
         if (permissionResponse?.canAskAgain) {
           requestPermission()
         } else {
           Toast.show(
-            'Permission to access camera roll was denied. Please enable it in your system settings.',
+            _(
+              msg`Permission to access camera roll was denied. Please enable it in your system settings.`,
+            ),
           )
         }
         return
@@ -43,94 +83,68 @@ export const Lightbox = observer(function Lightbox() {
         Toast.show(`Failed to save image: ${String(e)}`)
       }
     },
-    [permissionResponse, requestPermission],
+    [permissionResponse, requestPermission, _],
   )
 
-  const LightboxFooter = React.useCallback(
-    ({imageIndex}: {imageIndex: number}) => {
-      const lightbox = store.shell.activeLightbox
-      if (!lightbox) {
-        return null
-      }
-
-      let altText = ''
-      let uri = ''
-      if (lightbox.name === 'images') {
-        const opts = lightbox as models.ImagesLightbox
-        uri = opts.images[imageIndex].uri
-        altText = opts.images[imageIndex].alt || ''
-      } else if (lightbox.name === 'profile-image') {
-        const opts = lightbox as models.ProfileImageLightbox
-        uri = opts.profileView.avatar || ''
-      }
-
-      return (
-        <View style={[styles.footer]}>
-          {altText ? (
-            <Pressable
-              onPress={() => setAltExpanded(!isAltExpanded)}
-              accessibilityRole="button">
-              <Text
-                style={[s.gray3, styles.footerText]}
-                numberOfLines={isAltExpanded ? undefined : 3}>
-                {altText}
-              </Text>
-            </Pressable>
-          ) : null}
-          <View style={styles.footerBtns}>
-            <Button
-              type="primary-outline"
-              style={styles.footerBtn}
-              onPress={() => saveImageToAlbumWithToasts(uri)}>
-              <FontAwesomeIcon icon={['far', 'floppy-disk']} style={s.white} />
-              <Text type="xl" style={s.white}>
-                Save
-              </Text>
-            </Button>
-            <Button
-              type="primary-outline"
-              style={styles.footerBtn}
-              onPress={() => shareImageModal({uri})}>
-              <FontAwesomeIcon icon="arrow-up-from-bracket" style={s.white} />
-              <Text type="xl" style={s.white}>
-                Share
-              </Text>
-            </Button>
-          </View>
-        </View>
-      )
-    },
-    [store.shell.activeLightbox, isAltExpanded, saveImageToAlbumWithToasts],
-  )
-
-  if (!store.shell.activeLightbox) {
-    return null
-  } else if (store.shell.activeLightbox.name === 'profile-image') {
-    const opts = store.shell.activeLightbox as models.ProfileImageLightbox
-    return (
-      <ImageView
-        images={[{uri: opts.profileView.avatar || ''}]}
-        imageIndex={0}
-        visible
-        onRequestClose={onClose}
-        FooterComponent={LightboxFooter}
-      />
-    )
-  } else if (store.shell.activeLightbox.name === 'images') {
-    const opts = store.shell.activeLightbox as models.ImagesLightbox
-    return (
-      <ImageView
-        images={opts.images.map(img => ({...img}))}
-        imageIndex={opts.index}
-        visible
-        onRequestClose={onClose}
-        FooterComponent={LightboxFooter}
-      />
-    )
-  } else {
+  const lightbox = activeLightbox
+  if (!lightbox) {
     return null
   }
-})
+
+  let altText = ''
+  let uri = ''
+  if (lightbox.name === 'images') {
+    const opts = lightbox as ImagesLightbox
+    uri = opts.images[imageIndex].uri
+    altText = opts.images[imageIndex].alt || ''
+  } else if (lightbox.name === 'profile-image') {
+    const opts = lightbox as ProfileImageLightbox
+    uri = opts.profile.avatar || ''
+  }
+
+  return (
+    <View style={[styles.footer]}>
+      {altText ? (
+        <View accessibilityRole="button" style={styles.footerText}>
+          <Text
+            style={[s.gray3]}
+            numberOfLines={isAltExpanded ? undefined : 3}
+            selectable
+            onPress={() => {
+              LayoutAnimation.configureNext({
+                duration: 300,
+                update: {type: 'spring', springDamping: 0.7},
+              })
+              setAltExpanded(prev => !prev)
+            }}
+            onLongPress={() => {}}>
+            {altText}
+          </Text>
+        </View>
+      ) : null}
+      <View style={styles.footerBtns}>
+        <Button
+          type="primary-outline"
+          style={styles.footerBtn}
+          onPress={() => saveImageToAlbumWithToasts(uri)}>
+          <FontAwesomeIcon icon={['far', 'floppy-disk']} style={s.white} />
+          <Text type="xl" style={s.white}>
+            <Trans context="action">Save</Trans>
+          </Text>
+        </Button>
+        <Button
+          type="primary-outline"
+          style={styles.footerBtn}
+          onPress={() => shareImageModal({uri})}>
+          <FontAwesomeIcon icon="arrow-up-from-bracket" style={s.white} />
+          <Text type="xl" style={s.white}>
+            <Trans context="action">Share</Trans>
+          </Text>
+        </Button>
+      </View>
+    </View>
+  )
+}
 
 const styles = StyleSheet.create({
   footer: {

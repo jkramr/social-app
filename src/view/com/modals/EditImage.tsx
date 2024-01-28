@@ -6,7 +6,7 @@ import {gradients, s} from 'lib/styles'
 import {useTheme} from 'lib/ThemeContext'
 import {Text} from '../util/text/Text'
 import LinearGradient from 'react-native-linear-gradient'
-import {useStores} from 'state/index'
+import {useWebMediaQueries} from 'lib/hooks/useWebMediaQueries'
 import ImageEditor, {Position} from 'react-avatar-editor'
 import {TextInput} from './util'
 import {enforceLen} from 'lib/strings/helpers'
@@ -18,7 +18,9 @@ import {Slider} from '@miblanchard/react-native-slider'
 import {MaterialIcons} from '@expo/vector-icons'
 import {observer} from 'mobx-react-lite'
 import {getKeys} from 'lib/type-assertions'
-import {isDesktopWeb} from 'platform/detection'
+import {Trans, msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
+import {useModalControls} from '#/state/modals'
 
 export const snapPoints = ['80%']
 
@@ -46,11 +48,16 @@ interface Props {
   gallery: GalleryModel
 }
 
-export const Component = observer(function ({image, gallery}: Props) {
+export const Component = observer(function EditImageImpl({
+  image,
+  gallery,
+}: Props) {
   const pal = usePalette('default')
   const theme = useTheme()
-  const store = useStores()
+  const {_} = useLingui()
   const windowDimensions = useWindowDimensions()
+  const {isMobile} = useWebMediaQueries()
+  const {closeModal} = useModalControls()
 
   const {
     aspectRatio,
@@ -105,16 +112,16 @@ export const Component = observer(function ({image, gallery}: Props) {
       // },
       {
         name: 'flip' as const,
-        label: 'Flip horizontal',
+        label: _(msg`Flip horizontal`),
         onPress: onFlipHorizontal,
       },
       {
         name: 'flip' as const,
-        label: 'Flip vertically',
+        label: _(msg`Flip vertically`),
         onPress: onFlipVertical,
       },
     ],
-    [onFlipHorizontal, onFlipVertical],
+    [onFlipHorizontal, onFlipVertical, _],
   )
 
   useEffect(() => {
@@ -124,8 +131,8 @@ export const Component = observer(function ({image, gallery}: Props) {
   }, [image])
 
   const onCloseModal = useCallback(() => {
-    store.shell.closeModal()
-  }, [store.shell])
+    closeModal()
+  }, [closeModal])
 
   const onPressCancel = useCallback(async () => {
     await gallery.previous(image)
@@ -174,20 +181,31 @@ export const Component = observer(function ({image, gallery}: Props) {
 
   const computedWidth =
     windowDimensions.width > 500 ? 410 : windowDimensions.width - 80
-  const sideLength = isDesktopWeb ? 300 : computedWidth
+  const sideLength = isMobile ? computedWidth : 300
 
   const dimensions = image.getResizedDimensions(aspectRatio, sideLength)
   const imgContainerStyles = {width: sideLength, height: sideLength}
 
   const imgControlStyles = {
     alignItems: 'center' as const,
-    flexDirection: isDesktopWeb ? ('row' as const) : ('column' as const),
-    gap: isDesktopWeb ? 5 : 0,
+    flexDirection: isMobile ? ('column' as const) : ('row' as const),
+    gap: isMobile ? 0 : 5,
   }
 
   return (
-    <View testID="editImageModal" style={[pal.view, styles.container, s.flex1]}>
-      <Text style={[styles.title, pal.text]}>Edit image</Text>
+    <View
+      testID="editImageModal"
+      style={[
+        pal.view,
+        styles.container,
+        s.flex1,
+        {
+          paddingHorizontal: isMobile ? 16 : undefined,
+        },
+      ]}>
+      <Text style={[styles.title, pal.text]}>
+        <Trans>Edit image</Trans>
+      </Text>
       <View style={[styles.gap18, s.flexRow]}>
         <View>
           <View
@@ -213,9 +231,9 @@ export const Component = observer(function ({image, gallery}: Props) {
           />
         </View>
         <View>
-          {isDesktopWeb ? (
+          {!isMobile ? (
             <Text type="sm-bold" style={pal.text}>
-              Ratios
+              <Trans>Ratios</Trans>
             </Text>
           ) : null}
           <View style={imgControlStyles}>
@@ -248,9 +266,9 @@ export const Component = observer(function ({image, gallery}: Props) {
               )
             })}
           </View>
-          {isDesktopWeb ? (
+          {!isMobile ? (
             <Text type="sm-bold" style={[pal.text, styles.subsection]}>
-              Transformations
+              <Trans>Transformations</Trans>
             </Text>
           ) : null}
           <View style={imgControlStyles}>
@@ -266,7 +284,7 @@ export const Component = observer(function ({image, gallery}: Props) {
                   size={label?.startsWith('Flip') ? 22 : 24}
                   style={[
                     pal.text,
-                    label === 'Flip vertically'
+                    label === _(msg`Flip vertically`)
                       ? styles.flipVertical
                       : undefined,
                   ]}
@@ -278,16 +296,23 @@ export const Component = observer(function ({image, gallery}: Props) {
       </View>
       <View style={[styles.gap18, styles.bottomSection, pal.border]}>
         <Text type="sm-bold" style={pal.text} nativeID="alt-text">
-          Accessibility
+          <Trans>Accessibility</Trans>
         </Text>
         <TextInput
           testID="altTextImageInput"
-          style={[styles.textArea, pal.border, pal.text]}
+          style={[
+            styles.textArea,
+            pal.border,
+            pal.text,
+            {
+              maxHeight: isMobile ? 50 : undefined,
+            },
+          ]}
           keyboardAppearance={theme.colorScheme}
           multiline
           value={altText}
           onChangeText={text => setAltText(enforceLen(text, MAX_ALT_TEXT))}
-          accessibilityLabel="Alt text"
+          accessibilityLabel={_(msg`Alt text`)}
           accessibilityHint=""
           accessibilityLabelledBy="alt-text"
         />
@@ -295,7 +320,7 @@ export const Component = observer(function ({image, gallery}: Props) {
       <View style={styles.btns}>
         <Pressable onPress={onPressCancel} accessibilityRole="button">
           <Text type="xl" style={pal.link}>
-            Cancel
+            <Trans>Cancel</Trans>
           </Text>
         </Pressable>
         <Pressable onPress={onPressSave} accessibilityRole="button">
@@ -305,7 +330,7 @@ export const Component = observer(function ({image, gallery}: Props) {
             end={{x: 1, y: 1}}
             style={[styles.btn]}>
             <Text type="xl-medium" style={s.white}>
-              Done
+              <Trans context="action">Done</Trans>
             </Text>
           </LinearGradient>
         </Pressable>
@@ -317,7 +342,6 @@ export const Component = observer(function ({image, gallery}: Props) {
 const styles = StyleSheet.create({
   container: {
     gap: 18,
-    paddingHorizontal: isDesktopWeb ? undefined : 16,
     height: '100%',
     width: '100%',
   },
@@ -369,7 +393,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     height: 100,
     textAlignVertical: 'top',
-    maxHeight: isDesktopWeb ? undefined : 50,
   },
   bottomSection: {
     borderTopWidth: 1,

@@ -4,6 +4,39 @@ interface Language {
   name: string
 }
 
+export enum AppLanguage {
+  en = 'en',
+  de = 'de',
+  es = 'es',
+  fr = 'fr',
+  hi = 'hi',
+  id = 'id',
+  ja = 'ja',
+  ko = 'ko',
+  pt_BR = 'pt-BR',
+  uk = 'uk',
+  ca = 'ca',
+}
+
+interface AppLanguageConfig {
+  code2: AppLanguage
+  name: string
+}
+
+export const APP_LANGUAGES: AppLanguageConfig[] = [
+  {code2: AppLanguage.en, name: 'English'},
+  {code2: AppLanguage.de, name: 'Deutsch – German'},
+  {code2: AppLanguage.es, name: 'Español – Spanish'},
+  {code2: AppLanguage.fr, name: 'Français – French'},
+  {code2: AppLanguage.hi, name: 'हिंदी – Hindi'},
+  {code2: AppLanguage.id, name: 'Bahasa Indonesia – Indonesian'},
+  {code2: AppLanguage.ja, name: '日本語 – Japanese'},
+  {code2: AppLanguage.ko, name: '한국어 – Korean'},
+  {code2: AppLanguage.pt_BR, name: 'Português (BR) – Portuguese (BR)'},
+  {code2: AppLanguage.uk, name: 'Українська – Ukrainian'},
+  {code2: AppLanguage.ca, name: 'Català – Catalan'},
+]
+
 export const LANGUAGES: Language[] = [
   {code3: 'aar', code2: 'aa', name: 'Afar'},
   {code3: 'abk', code2: 'ab', name: 'Abkhazian'},

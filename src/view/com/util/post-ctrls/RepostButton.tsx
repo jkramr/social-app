@@ -1,14 +1,15 @@
-import React, {useCallback} from 'react'
+import React, {memo, useCallback} from 'react'
 import {StyleProp, StyleSheet, TouchableOpacity, ViewStyle} from 'react-native'
 import {RepostIcon} from 'lib/icons'
 import {s, colors} from 'lib/styles'
 import {useTheme} from 'lib/ThemeContext'
 import {Text} from '../text/Text'
 import {pluralize} from 'lib/strings/helpers'
-import {useStores} from 'state/index'
-import {createHitslop} from 'lib/constants'
-
-const HITSLOP = createHitslop(5)
+import {HITSLOP_10, HITSLOP_20} from 'lib/constants'
+import {useModalControls} from '#/state/modals'
+import {useRequireAuth} from '#/state/session'
+import {msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
 
 interface Props {
   isReposted: boolean
@@ -18,15 +19,17 @@ interface Props {
   onQuote: () => void
 }
 
-export const RepostButton = ({
+let RepostButton = ({
   isReposted,
   repostCount,
   big,
   onRepost,
   onQuote,
-}: Props) => {
-  const store = useStores()
+}: Props): React.ReactNode => {
   const theme = useTheme()
+  const {_} = useLingui()
+  const {openModal} = useModalControls()
+  const requireAuth = useRequireAuth()
 
   const defaultControlColor = React.useMemo(
     () => ({
@@ -36,25 +39,29 @@ export const RepostButton = ({
   )
 
   const onPressToggleRepostWrapper = useCallback(() => {
-    store.shell.openModal({
+    openModal({
       name: 'repost',
       onRepost: onRepost,
       onQuote: onQuote,
       isReposted,
     })
-  }, [onRepost, onQuote, isReposted, store.shell])
+  }, [onRepost, onQuote, isReposted, openModal])
 
   return (
     <TouchableOpacity
       testID="repostBtn"
-      hitSlop={HITSLOP}
-      onPress={onPressToggleRepostWrapper}
-      style={styles.control}
+      onPress={() => {
+        requireAuth(() => onPressToggleRepostWrapper())
+      }}
+      style={[styles.btn, !big && styles.btnPad]}
       accessibilityRole="button"
       accessibilityLabel={`${
-        isReposted ? 'Undo repost' : 'Repost'
+        isReposted
+          ? _(msg`Undo repost`)
+          : _(msg({message: 'Repost', context: 'action'}))
       } (${repostCount} ${pluralize(repostCount || 0, 'repost')})`}
-      accessibilityHint="">
+      accessibilityHint=""
+      hitSlop={big ? HITSLOP_20 : HITSLOP_10}>
       <RepostIcon
         style={
           isReposted
@@ -64,7 +71,7 @@ export const RepostButton = ({
         strokeWidth={2.4}
         size={big ? 24 : 20}
       />
-      {typeof repostCount !== 'undefined' ? (
+      {typeof repostCount !== 'undefined' && repostCount > 0 ? (
         <Text
           testID="repostCount"
           style={
@@ -78,13 +85,19 @@ export const RepostButton = ({
     </TouchableOpacity>
   )
 }
+RepostButton = memo(RepostButton)
+export {RepostButton}
 
 const styles = StyleSheet.create({
-  control: {
+  btn: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 5,
-    margin: -5,
+  },
+  btnPad: {
+    paddingTop: 5,
+    paddingBottom: 5,
+    paddingLeft: 5,
+    paddingRight: 5,
   },
   reposted: {
     color: colors.green3,

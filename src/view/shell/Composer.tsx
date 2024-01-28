@@ -2,74 +2,63 @@ import React, {useEffect} from 'react'
 import {observer} from 'mobx-react-lite'
 import {Animated, Easing, Platform, StyleSheet, View} from 'react-native'
 import {ComposePost} from '../com/composer/Composer'
-import {ComposerOpts} from 'state/models/ui/shell'
+import {useComposerState} from 'state/shell/composer'
 import {useAnimatedValue} from 'lib/hooks/useAnimatedValue'
 import {usePalette} from 'lib/hooks/usePalette'
 
-export const Composer = observer(
-  ({
-    active,
-    winHeight,
-    replyTo,
-    onPost,
-    onClose,
-    quote,
-  }: {
-    active: boolean
-    winHeight: number
-    replyTo?: ComposerOpts['replyTo']
-    onPost?: ComposerOpts['onPost']
-    onClose: () => void
-    quote?: ComposerOpts['quote']
-  }) => {
-    const pal = usePalette('default')
-    const initInterp = useAnimatedValue(0)
+export const Composer = observer(function ComposerImpl({
+  winHeight,
+}: {
+  winHeight: number
+}) {
+  const state = useComposerState()
+  const pal = usePalette('default')
+  const initInterp = useAnimatedValue(0)
 
-    useEffect(() => {
-      if (active) {
-        Animated.timing(initInterp, {
-          toValue: 1,
-          duration: 300,
-          easing: Easing.out(Easing.exp),
-          useNativeDriver: true,
-        }).start()
-      } else {
-        initInterp.setValue(0)
-      }
-    }, [initInterp, active])
-    const wrapperAnimStyle = {
-      transform: [
-        {
-          translateY: initInterp.interpolate({
-            inputRange: [0, 1],
-            outputRange: [winHeight, 0],
-          }),
-        },
-      ],
+  useEffect(() => {
+    if (state) {
+      Animated.timing(initInterp, {
+        toValue: 1,
+        duration: 300,
+        easing: Easing.out(Easing.exp),
+        useNativeDriver: true,
+      }).start()
+    } else {
+      initInterp.setValue(0)
     }
+  }, [initInterp, state])
+  const wrapperAnimStyle = {
+    transform: [
+      {
+        translateY: initInterp.interpolate({
+          inputRange: [0, 1],
+          outputRange: [winHeight, 0],
+        }),
+      },
+    ],
+  }
 
-    // rendering
-    // =
+  // rendering
+  // =
 
-    if (!active) {
-      return <View />
-    }
+  if (!state) {
+    return <View />
+  }
 
-    return (
-      <Animated.View
-        style={[styles.wrapper, pal.view, wrapperAnimStyle]}
-        aria-modal
-        accessibilityViewIsModal>
-        <ComposePost
-          replyTo={replyTo}
-          onPost={onPost}
-          onClose={onClose}
-          quote={quote}
-        />
-      </Animated.View>
-    )
-  },
-)
+  return (
+    <Animated.View
+      style={[styles.wrapper, pal.view, wrapperAnimStyle]}
+      aria-modal
+      accessibilityViewIsModal>
+      <ComposePost
+        replyTo={state.replyTo}
+        onPost={state.onPost}
+        quote={state.quote}
+        mention={state.mention}
+      />
+    </Animated.View>
+  )
+})
 
 const styles = StyleSheet.create({
   wrapper: {

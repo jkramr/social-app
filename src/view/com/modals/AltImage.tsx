@@ -1,14 +1,12 @@
 import React, {useMemo, useCallback, useState} from 'react'
 import {
   ImageStyle,
-  KeyboardAvoidingView,
-  ScrollView,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native'
+import {ScrollView, TextInput} from './util'
 import {Image} from 'expo-image'
 import {usePalette} from 'lib/hooks/usePalette'
 import {gradients, s} from 'lib/styles'
@@ -17,11 +15,13 @@ import {MAX_ALT_TEXT} from 'lib/constants'
 import {useTheme} from 'lib/ThemeContext'
 import {Text} from '../util/text/Text'
 import LinearGradient from 'react-native-linear-gradient'
-import {useStores} from 'state/index'
-import {isDesktopWeb, isAndroid} from 'platform/detection'
+import {isWeb} from 'platform/detection'
 import {ImageModel} from 'state/models/media/image'
+import {useLingui} from '@lingui/react'
+import {Trans, msg} from '@lingui/macro'
+import {useModalControls} from '#/state/modals'
 
-export const snapPoints = ['fullscreen']
+export const snapPoints = ['100%']
 
 interface Props {
   image: ImageModel
@@ -29,13 +29,14 @@ interface Props {
 
 export function Component({image}: Props) {
   const pal = usePalette('default')
-  const store = useStores()
   const theme = useTheme()
+  const {_} = useLingui()
   const [altText, setAltText] = useState(image.altText)
   const windim = useWindowDimensions()
+  const {closeModal} = useModalControls()
 
   const imageStyles = useMemo<ImageStyle>(() => {
-    const maxWidth = isDesktopWeb ? 450 : windim.width
+    const maxWidth = isWeb ? 450 : windim.width
     if (image.height > image.width) {
       return {
         resizeMode: 'contain',
@@ -51,101 +52,86 @@ export function Component({image}: Props) {
     }
   }, [image, windim])
 
+  const onUpdate = useCallback(
+    (v: string) => {
+      v = enforceLen(v, MAX_ALT_TEXT)
+      setAltText(v)
+      image.setAltText(v)
+    },
+    [setAltText, image],
+  )
+
   const onPressSave = useCallback(() => {
     image.setAltText(altText)
-    store.shell.closeModal()
-  }, [store, image, altText])
-
-  const onPressCancel = () => {
-    store.shell.closeModal()
-  }
+    closeModal()
+  }, [closeModal, image, altText])
 
   return (
-    <KeyboardAvoidingView
-      behavior={isAndroid ? 'height' : 'padding'}
-      style={[pal.view, styles.container]}>
-      <ScrollView
-        testID="altTextImageModal"
-        style={styles.scrollContainer}
-        keyboardShouldPersistTaps="always"
-        nativeID="imageAltText">
-        <View style={styles.scrollInner}>
-          <View style={[pal.viewLight, styles.imageContainer]}>
-            <Image
-              testID="selectedPhotoImage"
-              style={imageStyles}
-              source={{
-                uri: image.cropped?.path ?? image.path,
-              }}
-              accessible={true}
-              accessibilityIgnoresInvertColors
-            />
-          </View>
-          <TextInput
-            testID="altTextImageInput"
-            style={[styles.textArea, pal.border, pal.text]}
-            keyboardAppearance={theme.colorScheme}
-            multiline
-            placeholder="Add alt text"
-            placeholderTextColor={pal.colors.textLight}
-            value={altText}
-            onChangeText={text => setAltText(enforceLen(text, MAX_ALT_TEXT))}
-            accessibilityLabel="Image alt text"
-            accessibilityHint=""
-            accessibilityLabelledBy="imageAltText"
-            autoFocus
+    <ScrollView
+      testID="altTextImageModal"
+      style={[pal.view, styles.scrollContainer]}
+      keyboardShouldPersistTaps="always"
+      nativeID="imageAltText">
+      <View style={styles.scrollInner}>
+        <View style={[pal.viewLight, styles.imageContainer]}>
+          <Image
+            testID="selectedPhotoImage"
+            style={imageStyles}
+            source={{
+              uri: image.cropped?.path ?? image.path,
+            }}
+            contentFit="contain"
+            accessible={true}
+            accessibilityIgnoresInvertColors
           />
-          <View style={styles.buttonControls}>
-            <TouchableOpacity
-              testID="altTextImageSaveBtn"
-              onPress={onPressSave}
-              accessibilityLabel="Save alt text"
-              accessibilityHint={`Saves alt text, which reads: ${altText}`}
-              accessibilityRole="button">
-              <LinearGradient
-                colors={[gradients.blueLight.start, gradients.blueLight.end]}
-                start={{x: 0, y: 0}}
-                end={{x: 1, y: 1}}
-                style={[styles.button]}>
-                <Text type="button-lg" style={[s.white, s.bold]}>
-                  Save
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="altTextImageCancelBtn"
-              onPress={onPressCancel}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel add image alt text"
-              accessibilityHint=""
-              onAccessibilityEscape={onPressCancel}>
-              <View style={[styles.button]}>
-                <Text type="button-lg" style={[pal.textLight]}>
-                  Cancel
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        <TextInput
+          testID="altTextImageInput"
+          style={[styles.textArea, pal.border, pal.text]}
+          keyboardAppearance={theme.colorScheme}
+          multiline
+          placeholder={_(msg`Add alt text`)}
+          placeholderTextColor={pal.colors.textLight}
+          value={altText}
+          onChangeText={onUpdate}
+          accessibilityLabel={_(msg`Image alt text`)}
+          accessibilityHint=""
+          accessibilityLabelledBy="imageAltText"
+          autoFocus
+        />
+        <View style={styles.buttonControls}>
+          <TouchableOpacity
+            testID="altTextImageSaveBtn"
+            onPress={onPressSave}
+            accessibilityLabel={_(msg`Save alt text`)}
+            accessibilityHint=""
+            accessibilityRole="button">
+            <LinearGradient
+              colors={[gradients.blueLight.start, gradients.blueLight.end]}
+              start={{x: 0, y: 0}}
+              end={{x: 1, y: 1}}
+              style={[styles.button]}>
+              <Text type="button-lg" style={[s.white, s.bold]}>
+                <Trans>Done</Trans>
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    height: '100%',
-    width: '100%',
-    paddingVertical: isDesktopWeb ? 0 : 18,
-  },
   scrollContainer: {
     flex: 1,
     height: '100%',
-    paddingHorizontal: isDesktopWeb ? 0 : 12,
+    paddingHorizontal: isWeb ? 0 : 12,
+    paddingVertical: isWeb ? 0 : 24,
   },
   scrollInner: {
     gap: 12,
+    paddingTop: isWeb ? 0 : 12,
   },
   imageContainer: {
     borderRadius: 8,
@@ -169,5 +155,6 @@ const styles = StyleSheet.create({
   },
   buttonControls: {
     gap: 8,
+    paddingBottom: isWeb ? 0 : 50,
   },
 })

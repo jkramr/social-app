@@ -1,16 +1,28 @@
 import React from 'react'
-import {StyleProp, StyleSheet, View, ViewStyle} from 'react-native'
+import {
+  TouchableWithoutFeedback,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native'
 import {
   FontAwesomeIcon,
   FontAwesomeIconStyle,
 } from '@fortawesome/react-native-fontawesome'
 import {useNavigation} from '@react-navigation/native'
+import {ModerationUI} from '@atproto/api'
 import {usePalette} from 'lib/hooks/usePalette'
+import {useWebMediaQueries} from 'lib/hooks/useWebMediaQueries'
 import {NavigationProp} from 'lib/routes/types'
 import {Text} from '../text/Text'
 import {Button} from '../forms/Button'
-import {isDesktopWeb} from 'platform/detection'
-import {ModerationBehaviorCode, ModerationBehavior} from 'lib/labeling/types'
+import {describeModerationCause} from 'lib/moderation'
+import {Trans, msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
+import {useModalControls} from '#/state/modals'
+import {s} from '#/lib/styles'
+import {CenteredView} from '../Views'
 
 export function ScreenHider({
   testID,
@@ -22,24 +34,19 @@ export function ScreenHider({
 }: React.PropsWithChildren<{
   testID?: string
   screenDescription: string
-  moderation: ModerationBehavior
+  moderation: ModerationUI
   style?: StyleProp<ViewStyle>
   containerStyle?: StyleProp<ViewStyle>
 }>) {
   const pal = usePalette('default')
   const palInverted = usePalette('inverted')
+  const {_} = useLingui()
   const [override, setOverride] = React.useState(false)
   const navigation = useNavigation<NavigationProp>()
+  const {isMobile} = useWebMediaQueries()
+  const {openModal} = useModalControls()
 
-  const onPressBack = React.useCallback(() => {
-    if (navigation.canGoBack()) {
-      navigation.goBack()
-    } else {
-      navigation.navigate('Home')
-    }
-  }, [navigation])
-
-  if (moderation.behavior !== ModerationBehaviorCode.Hide || override) {
+  if (!moderation.blur || override) {
     return (
       <View testID={testID} style={style}>
         {children}
@@ -47,29 +54,73 @@ export function ScreenHider({
     )
   }
 
+  const isNoPwi =
+    moderation.cause?.type === 'label' &&
+    moderation.cause?.labelDef.id === '!no-unauthenticated'
+  const desc = describeModerationCause(moderation.cause, 'account')
   return (
-    <View style={[styles.container, pal.view, containerStyle]}>
+    <CenteredView
+      style={[styles.container, pal.view, containerStyle]}
+      sideBorders>
       <View style={styles.iconContainer}>
         <View style={[styles.icon, palInverted.view]}>
           <FontAwesomeIcon
-            icon="exclamation"
+            icon={isNoPwi ? ['far', 'eye-slash'] : 'exclamation'}
             style={pal.textInverted as FontAwesomeIconStyle}
             size={24}
           />
         </View>
       </View>
       <Text type="title-2xl" style={[styles.title, pal.text]}>
-        Content Warning
+        {isNoPwi ? (
+          <Trans>Sign-in Required</Trans>
+        ) : (
+          <Trans>Content Warning</Trans>
+        )}
       </Text>
       <Text type="2xl" style={[styles.description, pal.textLight]}>
-        This {screenDescription} has been flagged:{' '}
-        {moderation.reason || 'Content warning'}
+        {isNoPwi ? (
+          <Trans>
+            This account has requested that users sign in to view their profile.
+          </Trans>
+        ) : (
+          <>
+            <Trans>This {screenDescription} has been flagged:</Trans>
+            <Text type="2xl-medium" style={[pal.text, s.ml5]}>
+              {desc.name}.
+            </Text>
+            <TouchableWithoutFeedback
+              onPress={() => {
+                openModal({
+                  name: 'moderation-details',
+                  context: 'account',
+                  moderation,
+                })
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={_(msg`Learn more about this warning`)}
+              accessibilityHint="">
+              <Text type="2xl" style={pal.link}>
+                <Trans>Learn More</Trans>
+              </Text>
+            </TouchableWithoutFeedback>
+          </>
+        )}{' '}
       </Text>
-      {!isDesktopWeb && <View style={styles.spacer} />}
+      {isMobile && <View style={styles.spacer} />}
       <View style={styles.btnContainer}>
-        <Button type="inverted" onPress={onPressBack} style={styles.btn}>
+        <Button
+          type="inverted"
+          onPress={() => {
+            if (navigation.canGoBack()) {
+              navigation.goBack()
+            } else {
+              navigation.navigate('Home')
+            }
+          }}
+          style={styles.btn}>
           <Text type="button-lg" style={pal.textInverted}>
-            Go back
+            <Trans>Go back</Trans>
           </Text>
         </Button>
         {!moderation.noOverride && (
@@ -78,12 +129,12 @@ export function ScreenHider({
             onPress={() => setOverride(v => !v)}
             style={styles.btn}>
             <Text type="button-lg" style={pal.text}>
-              Show anyway
+              <Trans>Show anyway</Trans>
             </Text>
           </Button>
         )}
       </View>
-    </View>
+    </CenteredView>
   )
 }
 

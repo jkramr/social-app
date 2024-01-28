@@ -4,6 +4,7 @@ import {
   AppBskyEmbedRecordWithMedia,
   AppBskyEmbedRecord,
 } from '@atproto/api'
+import {ReasonFeedSource} from './feed/types'
 import {isPostInLanguage} from '../../locale/helpers'
 type FeedViewPost = AppBskyFeedDefs.FeedViewPost
 
@@ -13,9 +14,15 @@ export type FeedTunerFn = (
 ) => FeedViewPostsSlice[]
 
 export class FeedViewPostsSlice {
+  _reactKey: string
   isFlattenedReply = false
 
-  constructor(public items: FeedViewPost[] = []) {}
+  constructor(public items: FeedViewPost[]) {
+    const item = items[0]
+    this._reactKey = `slice-${item.post.uri}-${
+      item.reason?.indexedAt || item.post.indexedAt
+    }`
+  }
 
   get uri() {
     if (this.isFlattenedReply) {
@@ -58,6 +65,11 @@ export class FeedViewPostsSlice {
     )
   }
 
+  get source(): ReasonFeedSource | undefined {
+    return this.items.find(item => '__source' in item && !!item.__source)
+      ?.__source as ReasonFeedSource
+  }
+
   containsUri(uri: string) {
     return !!this.items.find(item => item.post.uri === uri)
   }
@@ -85,40 +97,91 @@ export class FeedViewPostsSlice {
       }
     }
   }
+
+  isFollowingAllAuthors(userDid: string) {
+    const item = this.rootItem
+    if (item.post.author.did === userDid) {
+      return true
+    }
+    if (AppBskyFeedDefs.isPostView(item.reply?.parent)) {
+      const parent = item.reply?.parent
+      if (parent?.author.did === userDid) {
+        return true
+      }
+      return (
+        parent?.author.viewer?.following && item.post.author.viewer?.following
+      )
+    }
+    return false
+  }
+}
+
+export class NoopFeedTuner {
+  reset() {}
+  tune(
+    feed: FeedViewPost[],
+    _opts?: {dryRun: boolean; maintainOrder: boolean},
+  ): FeedViewPostsSlice[] {
+    return feed.map(item => new FeedViewPostsSlice([item]))
+  }
 }
 
 export class FeedTuner {
+  seenKeys: Set<string> = new Set()
   seenUris: Set<string> = new Set()
 
-  constructor() {}
+  constructor(public tunerFns: FeedTunerFn[]) {}
 
   reset() {
+    this.seenKeys.clear()
     this.seenUris.clear()
   }
 
   tune(
     feed: FeedViewPost[],
-    tunerFns: FeedTunerFn[] = [],
+    {dryRun, maintainOrder}: {dryRun: boolean; maintainOrder: boolean} = {
+      dryRun: false,
+      maintainOrder: false,
+    },
   ): FeedViewPostsSlice[] {
     let slices: FeedViewPostsSlice[] = []
 
-    // arrange the posts into thread slices
-    for (let i = feed.length - 1; i >= 0; i--) {
-      const item = feed[i]
-
-      const selfReplyUri = getSelfReplyUri(item)
-      if (selfReplyUri) {
-        const parent = slices.find(item2 => item2.isNextInThread(selfReplyUri))
-        if (parent) {
-          parent.insert(item)
-          continue
-        }
+    // remove posts that are replies, but which don't have the parent
+    // hydrated. this means the parent was either deleted or blocked
+    feed = feed.filter(item => {
+      if (
+        AppBskyFeedPost.isRecord(item.post.record) &&
+        item.post.record.reply &&
+        !item.reply
+      ) {
+        return false
       }
-      slices.unshift(new FeedViewPostsSlice([item]))
+      return true
+    })
+
+    if (maintainOrder) {
+      slices = feed.map(item => new FeedViewPostsSlice([item]))
+    } else {
+      // arrange the posts into thread slices
+      for (let i = feed.length - 1; i >= 0; i--) {
+        const item = feed[i]
+
+        const selfReplyUri = getSelfReplyUri(item)
+        if (selfReplyUri) {
+          const parent = slices.find(item2 =>
+            item2.isNextInThread(selfReplyUri),
+          )
+          if (parent) {
+            parent.insert(item)
+            continue
+          }
+        }
+        slices.unshift(new FeedViewPostsSlice([item]))
+      }
     }
 
     // run the custom tuners
-    for (const tunerFn of tunerFns) {
+    for (const tunerFn of this.tunerFns) {
       slices = tunerFn(this, slices.slice())
     }
 
@@ -150,10 +213,17 @@ export class FeedTuner {
       }
     }
 
-    for (const slice of slices) {
-      for (const item of slice.items) {
-        this.seenUris.add(item.post.uri)
-      }
+    if (!dryRun) {
+      slices = slices.filter(slice => {
+        if (this.seenKeys.has(slice._reactKey)) {
+          return false
+        }
+        for (const item of slice.items) {
+          this.seenUris.add(item.post.uri)
+        }
+        this.seenKeys.add(slice._reactKey)
+        return true
+      })
     }
 
     return slices
@@ -213,20 +283,34 @@ export class FeedTuner {
     return slices
   }
 
-  static likedRepliesOnly({repliesThreshold}: {repliesThreshold: number}) {
+  static thresholdRepliesOnly({
+    userDid,
+    minLikes,
+    followedOnly,
+  }: {
+    userDid: string
+    minLikes: number
+    followedOnly: boolean
+  }) {
     return (
       tuner: FeedTuner,
       slices: FeedViewPostsSlice[],
     ): FeedViewPostsSlice[] => {
-      // remove any replies without at least repliesThreshold likes
+      // remove any replies without at least minLikes likes
       for (let i = slices.length - 1; i >= 0; i--) {
-        if (slices[i].isFullThread || !slices[i].isReply) {
+        const slice = slices[i]
+        if (slice.isFullThread || !slice.isReply) {
           continue
         }
 
-        const item = slices[i].rootItem
+        const item = slice.rootItem
         const isRepost = Boolean(item.reason)
-        if (!isRepost && (item.post.likeCount || 0) < repliesThreshold) {
+        if (isRepost) {
+          continue
+        }
+        if ((item.post.likeCount || 0) < minLikes) {
+          slices.splice(i, 1)
+        } else if (followedOnly && !slice.isFollowingAllAuthors(userDid)) {
           slices.splice(i, 1)
         }
       }
@@ -272,7 +356,10 @@ export class FeedTuner {
 
 function getSelfReplyUri(item: FeedViewPost): string | undefined {
   if (item.reply) {
-    if (AppBskyFeedDefs.isPostView(item.reply.parent)) {
+    if (
+      AppBskyFeedDefs.isPostView(item.reply.parent) &&
+      !AppBskyFeedDefs.isReasonRepost(item.reason) // don't thread reposted self-replies
+    ) {
       return item.reply.parent.author.did === item.post.author.did
         ? item.reply.parent.uri
         : undefined

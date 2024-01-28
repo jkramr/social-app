@@ -7,11 +7,9 @@ import {ImageSource} from '../../@types'
 type Props = {
   imageSrc: ImageSource
   onRequestClose: () => void
+  onTap: () => void
   onZoom: (scaled: boolean) => void
-  onLongPress: (image: ImageSource) => void
-  delayLongPress: number
-  swipeToCloseEnabled?: boolean
-  doubleTapToZoomEnabled?: boolean
+  isScrollViewBeingDragged: boolean
 }
 
 const ImageItem = (_props: Props) => {

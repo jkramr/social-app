@@ -5,9 +5,7 @@ import {ViewHeader} from '../com/util/ViewHeader'
 import {ThemeProvider, PaletteColorName} from 'lib/ThemeContext'
 import {usePalette} from 'lib/hooks/usePalette'
 import {s} from 'lib/styles'
-import {displayNotification} from 'lib/notifee'
 import * as Toast from 'view/com/util/Toast'
-
 import {Text} from '../com/util/text/Text'
 import {ViewSelector} from '../com/util/ViewSelector'
 import {EmptyState} from '../com/util/EmptyState'
@@ -18,6 +16,8 @@ import {ToggleButton} from '../com/util/forms/ToggleButton'
 import {RadioGroup} from '../com/util/forms/RadioGroup'
 import {ErrorScreen} from '../com/util/error/ErrorScreen'
 import {ErrorMessage} from '../com/util/error/ErrorMessage'
+import {msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
 
 const MAIN_VIEWS = ['Base', 'Controls', 'Error', 'Notifs']
 
@@ -50,6 +50,7 @@ function DebugInner({
 }) {
   const [currentView, setCurrentView] = React.useState<number>(0)
   const pal = usePalette('default')
+  const {_} = useLingui()
 
   const renderItem = (item: any) => {
     return (
@@ -59,7 +60,7 @@ function DebugInner({
             type="default-light"
             onPress={onToggleColorScheme}
             isSelected={colorScheme === 'dark'}
-            label="Dark mode"
+            label={_(msg`Dark mode`)}
           />
         </View>
         {item.currentView === 3 ? (
@@ -79,7 +80,7 @@ function DebugInner({
 
   return (
     <View style={[s.hContentRegion, pal.view]}>
-      <ViewHeader title="Debug panel" />
+      <ViewHeader title={_(msg`Debug panel`)} />
       <ViewSelector
         swipeEnabled
         sections={MAIN_VIEWS}
@@ -177,10 +178,7 @@ function ErrorView() {
 
 function NotifsView() {
   const triggerPush = () => {
-    displayNotification(
-      'Paul Frazee liked your post',
-      "Hello world! This is a test of the notifications card. The text is long to see how that's handled.",
-    )
+    // TODO: implement local notification for testing
   }
   const triggerToast = () => {
     Toast.show('The task has been completed')

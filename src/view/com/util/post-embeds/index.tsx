@@ -4,31 +4,31 @@ import {
   StyleProp,
   View,
   ViewStyle,
-  Image as RNImage,
   Text,
+  InteractionManager,
 } from 'react-native'
+import {Image} from 'expo-image'
 import {
   AppBskyEmbedImages,
   AppBskyEmbedExternal,
   AppBskyEmbedRecord,
   AppBskyEmbedRecordWithMedia,
-  AppBskyFeedPost,
   AppBskyFeedDefs,
   AppBskyGraphDefs,
+  ModerationUI,
+  PostModeration,
 } from '@atproto/api'
 import {Link} from '../Link'
 import {ImageLayoutGrid} from '../images/ImageLayoutGrid'
-import {ImagesLightbox} from 'state/models/ui/shell'
-import {useStores} from 'state/index'
+import {useLightboxControls, ImagesLightbox} from '#/state/lightbox'
 import {usePalette} from 'lib/hooks/usePalette'
-import {YoutubeEmbed} from './YoutubeEmbed'
 import {ExternalLinkEmbed} from './ExternalLinkEmbed'
-import {getYoutubeVideoId} from 'lib/strings/url-helpers'
-import QuoteEmbed from './QuoteEmbed'
+import {MaybeQuoteEmbed} from './QuoteEmbed'
 import {AutoSizedImage} from '../images/AutoSizedImage'
-import {CustomFeedEmbed} from './CustomFeedEmbed'
 import {ListEmbed} from './ListEmbed'
-import {isDesktopWeb} from 'platform/detection'
+import {isCauseALabelOnUri, isQuoteBlurred} from 'lib/moderation'
+import {FeedSourceCard} from 'view/com/feeds/FeedSourceCard'
+import {ContentHider} from '../moderation/ContentHider'
 
 type Embed =
   | AppBskyEmbedRecord.View
@@ -39,61 +39,62 @@ type Embed =
 
 export function PostEmbeds({
   embed,
+  moderation,
+  moderationDecisions,
   style,
 }: {
   embed?: Embed
+  moderation: ModerationUI
+  moderationDecisions?: PostModeration['decisions']
   style?: StyleProp<ViewStyle>
 }) {
   const pal = usePalette('default')
-  const store = useStores()
+  const {openLightbox} = useLightboxControls()
 
   // quote post with media
   // =
-  if (
-    AppBskyEmbedRecordWithMedia.isView(embed) &&
-    AppBskyEmbedRecord.isViewRecord(embed.record.record) &&
-    AppBskyFeedPost.isRecord(embed.record.record.value) &&
-    AppBskyFeedPost.validateRecord(embed.record.record.value).success
-  ) {
+  if (AppBskyEmbedRecordWithMedia.isView(embed)) {
+    const isModOnQuote =
+      (AppBskyEmbedRecord.isViewRecord(embed.record.record) &&
+        isCauseALabelOnUri(moderation.cause, embed.record.record.uri)) ||
+      (moderationDecisions && isQuoteBlurred(moderationDecisions))
+    const mediaModeration = isModOnQuote ? {} : moderation
+    const quoteModeration = isModOnQuote ? moderation : {}
     return (
-      <View style={[styles.stackContainer, style]}>
-        <PostEmbeds embed={embed.media} />
-        <QuoteEmbed
-          quote={{
-            author: embed.record.record.author,
-            cid: embed.record.record.cid,
-            uri: embed.record.record.uri,
-            indexedAt: embed.record.record.indexedAt,
-            text: embed.record.record.value.text,
-            embeds: embed.record.record.embeds,
-          }}
-        />
+      <View style={style}>
+        <PostEmbeds embed={embed.media} moderation={mediaModeration} />
+        <ContentHider moderation={quoteModeration}>
+          <MaybeQuoteEmbed embed={embed.record} moderation={quoteModeration} />
+        </ContentHider>
       </View>
     )
   }
 
-  // quote post
-  // =
   if (AppBskyEmbedRecord.isView(embed)) {
-    if (
-      AppBskyEmbedRecord.isViewRecord(embed.record) &&
-      AppBskyFeedPost.isRecord(embed.record.value) &&
-      AppBskyFeedPost.validateRecord(embed.record.value).success
-    ) {
+    // custom feed embed (i.e. generator view)
+    // =
+    if (AppBskyFeedDefs.isGeneratorView(embed.record)) {
       return (
-        <QuoteEmbed
-          quote={{
-            author: embed.record.author,
-            cid: embed.record.cid,
-            uri: embed.record.uri,
-            indexedAt: embed.record.indexedAt,
-            text: embed.record.value.text,
-            embeds: embed.record.embeds,
-          }}
-          style={style}
+        <FeedSourceCard
+          feedUri={embed.record.uri}
+          style={[pal.view, pal.border, styles.customFeedOuter]}
+          showLikes
         />
       )
     }
+
+    // list embed
+    if (AppBskyGraphDefs.isListView(embed.record)) {
+      return <ListEmbed item={embed.record} />
+    }
+
+    // quote post
+    // =
+    return (
+      <ContentHider moderation={moderation}>
+        <MaybeQuoteEmbed embed={embed} style={style} moderation={moderation} />
+      </ContentHider>
+    )
   }
 
   // image embed
@@ -102,31 +103,31 @@ export function PostEmbeds({
     const {images} = embed
 
     if (images.length > 0) {
-      const items = embed.images.map(img => ({uri: img.fullsize, alt: img.alt}))
-      const openLightbox = (index: number) => {
-        store.shell.openLightbox(new ImagesLightbox(items, index))
+      const items = embed.images.map(img => ({
+        uri: img.fullsize,
+        alt: img.alt,
+        aspectRatio: img.aspectRatio,
+      }))
+      const _openLightbox = (index: number) => {
+        openLightbox(new ImagesLightbox(items, index))
       }
-      const onPressIn = (index: number) => {
-        const firstImageToShow = items[index].uri
-        RNImage.prefetch(firstImageToShow)
-        items.forEach(item => {
-          if (firstImageToShow !== item.uri) {
-            // First image already prefetched above
-            RNImage.prefetch(item.uri)
-          }
+      const onPressIn = (_: number) => {
+        InteractionManager.runAfterInteractions(() => {
+          Image.prefetch(items.map(i => i.uri))
         })
       }
 
       if (images.length === 1) {
-        const {alt, thumb} = images[0]
+        const {alt, thumb, aspectRatio} = images[0]
         return (
           <View style={[styles.imagesContainer, style]}>
             <AutoSizedImage
               alt={alt}
               uri={thumb}
-              onPress={() => openLightbox(0)}
+              dimensionsHint={aspectRatio}
+              onPress={() => _openLightbox(0)}
               onPressIn={() => onPressIn(0)}
-              style={styles.singleImage}>
+              style={[styles.singleImage]}>
               {alt === '' ? null : (
                 <View style={styles.altContainer}>
                   <Text style={styles.alt} accessible={false}>
@@ -143,48 +144,27 @@ export function PostEmbeds({
         <View style={[styles.imagesContainer, style]}>
           <ImageLayoutGrid
             images={embed.images}
-            onPress={openLightbox}
+            onPress={_openLightbox}
             onPressIn={onPressIn}
-            style={embed.images.length === 1 ? styles.singleImage : undefined}
+            style={embed.images.length === 1 ? [styles.singleImage] : undefined}
           />
         </View>
       )
     }
   }
 
-  // custom feed embed (i.e. generator view)
-  // =
-  if (
-    AppBskyEmbedRecord.isView(embed) &&
-    AppBskyFeedDefs.isGeneratorView(embed.record)
-  ) {
-    return <CustomFeedEmbed record={embed.record} />
-  }
-
-  // list embed (e.g. mute lists; i.e. ListView)
-  if (
-    AppBskyEmbedRecord.isView(embed) &&
-    AppBskyGraphDefs.isListView(embed.record)
-  ) {
-    return <ListEmbed item={embed.record} />
-  }
-
   // external link embed
   // =
   if (AppBskyEmbedExternal.isView(embed)) {
     const link = embed.external
-    const youtubeVideoId = getYoutubeVideoId(link.uri)
-
-    if (youtubeVideoId) {
-      return <YoutubeEmbed link={link} style={style} />
-    }
 
     return (
       <Link
         asAnchor
-        noFeedback
-        style={[styles.extOuter, pal.view, pal.border, style]}
-        href={link.uri}>
+        anchorNoUnderline
+        href={link.uri}
+        style={[styles.extOuter, pal.view, pal.borderDark, style]}
+        hoverStyle={{borderColor: pal.colors.borderLinkHover}}>
         <ExternalLinkEmbed link={link} />
       </Link>
     )
@@ -194,15 +174,11 @@ export function PostEmbeds({
 }
 
 const styles = StyleSheet.create({
-  stackContainer: {
-    gap: 6,
-  },
   imagesContainer: {
     marginTop: 8,
   },
   singleImage: {
     borderRadius: 8,
-    maxHeight: isDesktopWeb ? 1000 : 500,
   },
   extOuter: {
     borderWidth: 1,
@@ -222,5 +198,12 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  customFeedOuter: {
+    borderWidth: 1,
+    borderRadius: 8,
+    marginTop: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
 })

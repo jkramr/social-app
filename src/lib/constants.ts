@@ -1,4 +1,10 @@
-import {Insets} from 'react-native'
+import {Insets, Platform} from 'react-native'
+
+export const LOCAL_DEV_SERVICE =
+  Platform.OS === 'android' ? 'http://10.0.2.2:2583' : 'http://localhost:2583'
+export const STAGING_SERVICE = 'https://staging.bsky.dev'
+export const PROD_SERVICE = 'https://bsky.social'
+export const DEFAULT_SERVICE = PROD_SERVICE
 
 const HELP_DESK_LANG = 'en-us'
 export const HELP_DESK_URL = `https://blueskyweb.zendesk.com/hc/${HELP_DESK_LANG}`
@@ -35,7 +41,7 @@ export function IS_LOCAL_DEV(url: string) {
 }
 
 export function IS_STAGING(url: string) {
-  return !IS_LOCAL_DEV(url) && !IS_PROD(url)
+  return url.startsWith('https://staging.bsky.dev')
 }
 
 export function IS_PROD(url: string) {
@@ -43,7 +49,11 @@ export function IS_PROD(url: string) {
   // until open federation, "production" is defined as the main server
   // this definition will not work once federation is enabled!
   // -prf
-  return url.startsWith('https://bsky.social')
+  return (
+    url.startsWith('https://bsky.social') ||
+    url.startsWith('https://api.bsky.app') ||
+    /bsky\.network\/?$/.test(url)
+  )
 }
 
 export const PROD_TEAM_HANDLES = [
@@ -79,12 +89,19 @@ export async function DEFAULT_FEEDS(
   serviceUrl: string,
   resolveHandle: (name: string) => Promise<string>,
 ) {
+  // TODO: remove this when the test suite no longer relies on it
   if (IS_LOCAL_DEV(serviceUrl)) {
     // local dev
     const aliceDid = await resolveHandle('alice.test')
     return {
-      pinned: [`at://${aliceDid}/app.bsky.feed.generator/alice-favs`],
-      saved: [`at://${aliceDid}/app.bsky.feed.generator/alice-favs`],
+      pinned: [
+        `at://${aliceDid}/app.bsky.feed.generator/alice-favs`,
+        `at://${aliceDid}/app.bsky.feed.generator/alice-favs2`,
+      ],
+      saved: [
+        `at://${aliceDid}/app.bsky.feed.generator/alice-favs`,
+        `at://${aliceDid}/app.bsky.feed.generator/alice-favs2`,
+      ],
     }
   } else if (IS_STAGING(serviceUrl)) {
     // staging
@@ -100,16 +117,8 @@ export async function DEFAULT_FEEDS(
   } else {
     // production
     return {
-      pinned: [
-        PROD_DEFAULT_FEED('whats-hot'),
-        PROD_DEFAULT_FEED('with-friends'),
-      ],
-      saved: [
-        PROD_DEFAULT_FEED('bsky-team'),
-        PROD_DEFAULT_FEED('with-friends'),
-        PROD_DEFAULT_FEED('whats-hot'),
-        PROD_DEFAULT_FEED('hot-classic'),
-      ],
+      pinned: [PROD_DEFAULT_FEED('whats-hot')],
+      saved: [PROD_DEFAULT_FEED('whats-hot')],
     }
   }
 }
@@ -148,3 +157,4 @@ export const HITSLOP_10 = createHitslop(10)
 export const HITSLOP_20 = createHitslop(20)
 export const HITSLOP_30 = createHitslop(30)
 export const BACK_HITSLOP = HITSLOP_30
+export const MAX_POST_LINES = 25

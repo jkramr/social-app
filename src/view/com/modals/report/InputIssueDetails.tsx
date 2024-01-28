@@ -5,9 +5,11 @@ import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome'
 import {CharProgress} from '../../composer/char-progress/CharProgress'
 import {Text} from '../../util/text/Text'
 import {usePalette} from 'lib/hooks/usePalette'
+import {useWebMediaQueries} from 'lib/hooks/useWebMediaQueries'
 import {s} from 'lib/styles'
 import {SendReportButton} from './SendReportButton'
-import {isDesktopWeb} from 'platform/detection'
+import {Trans, msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
 
 export function InputIssueDetails({
   details,
@@ -23,22 +25,30 @@ export function InputIssueDetails({
   isProcessing: boolean
 }) {
   const pal = usePalette('default')
+  const {_} = useLingui()
+  const {isMobile} = useWebMediaQueries()
 
   return (
-    <View style={[styles.detailsContainer]}>
+    <View
+      style={{
+        marginTop: isMobile ? 12 : 0,
+      }}>
       <TouchableOpacity
         testID="addDetailsBtn"
         style={[s.mb10, styles.backBtn]}
         onPress={goBack}
         accessibilityRole="button"
-        accessibilityLabel="Add details"
+        accessibilityLabel={_(msg`Add details`)}
         accessibilityHint="Add more details to your report">
         <FontAwesomeIcon size={18} icon="angle-left" style={[pal.link]} />
-        <Text style={[pal.text, s.f18, pal.link]}> Back</Text>
+        <Text style={[pal.text, s.f18, pal.link]}>
+          {' '}
+          <Trans>Back</Trans>
+        </Text>
       </TouchableOpacity>
       <View style={[pal.btn, styles.detailsInputContainer]}>
         <TextInput
-          accessibilityLabel="Text input field"
+          accessibilityLabel={_(msg`Text input field`)}
           accessibilityHint="Enter a reason for reporting this post."
           placeholder="Enter a reason or any other details here."
           placeholderTextColor={pal.textLight.color}
@@ -63,9 +73,6 @@ export function InputIssueDetails({
 }
 
 const styles = StyleSheet.create({
-  detailsContainer: {
-    marginTop: isDesktopWeb ? 0 : 12,
-  },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',

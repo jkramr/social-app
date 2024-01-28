@@ -7,10 +7,11 @@ import {RichText as RichTextCom} from '../util/text/RichText'
 import {UserAvatar} from '../util/UserAvatar'
 import {s} from 'lib/styles'
 import {usePalette} from 'lib/hooks/usePalette'
-import {useStores} from 'state/index'
+import {useSession} from '#/state/session'
 import {sanitizeDisplayName} from 'lib/strings/display-names'
 import {sanitizeHandle} from 'lib/strings/handles'
 import {makeProfileLink} from 'lib/routes/links'
+import {Trans} from '@lingui/macro'
 
 export const ListCard = ({
   testID,
@@ -28,7 +29,7 @@ export const ListCard = ({
   style?: StyleProp<ViewStyle>
 }) => {
   const pal = usePalette('default')
-  const store = useStores()
+  const {currentAccount} = useSession()
 
   const rkey = React.useMemo(() => {
     try {
@@ -76,20 +77,40 @@ export const ListCard = ({
             {sanitizeDisplayName(list.name)}
           </Text>
           <Text type="md" style={[pal.textLight]} numberOfLines={1}>
-            {list.purpose === 'app.bsky.graph.defs#modlist' && 'Mute list'} by{' '}
-            {list.creator.did === store.me.did
-              ? 'you'
-              : sanitizeHandle(list.creator.handle, '@')}
+            {list.purpose === 'app.bsky.graph.defs#curatelist' &&
+              (list.creator.did === currentAccount?.did ? (
+                <Trans>User list by you</Trans>
+              ) : (
+                <Trans>
+                  User list by {sanitizeHandle(list.creator.handle, '@')}
+                </Trans>
+              ))}
+            {list.purpose === 'app.bsky.graph.defs#modlist' &&
+              (list.creator.did === currentAccount?.did ? (
+                <Trans>Moderation list by you</Trans>
+              ) : (
+                <Trans>
+                  Moderation list by {sanitizeHandle(list.creator.handle, '@')}
+                </Trans>
+              ))}
           </Text>
-          {!!list.viewer?.muted && (
-            <View style={s.flexRow}>
+          <View style={s.flexRow}>
+            {list.viewer?.muted ? (
               <View style={[s.mt5, pal.btn, styles.pill]}>
                 <Text type="xs" style={pal.text}>
-                  Subscribed
+                  <Trans>Muted</Trans>
                 </Text>
               </View>
-            </View>
-          )}
+            ) : null}
+
+            {list.viewer?.blocked ? (
+              <View style={[s.mt5, pal.btn, styles.pill]}>
+                <Text type="xs" style={pal.text}>
+                  <Trans>Blocked</Trans>
+                </Text>
+              </View>
+            ) : null}
+          </View>
         </View>
         {renderButton ? (
           <View style={styles.layoutButton}>{renderButton()}</View>

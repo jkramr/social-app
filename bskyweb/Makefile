@@ -2,6 +2,9 @@
 SHELL = /bin/bash
 .SHELLFLAGS = -o pipefail -c
 
+# https://github.com/golang/go/wiki/LoopvarExperiment
+export GOEXPERIMENT := loopvar
+
 .PHONY: help
 help: ## Print info about all commands
 	@echo "Commands:"
@@ -39,4 +42,4 @@ check: ## Compile everything, checking syntax (does not output binaries)
 
 .PHONY: run-dev-bskyweb
 run-dev-bskyweb: .env ## Runs 'bskyweb' for local dev
-	GOLOG_LOG_LEVEL=info go run ./cmd/bskyweb serve --debug
+	GOLOG_LOG_LEVEL=info go run ./cmd/bskyweb serve

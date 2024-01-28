@@ -17,6 +17,8 @@ import {colors} from 'lib/styles'
 import {usePalette} from 'lib/hooks/usePalette'
 import {useTheme} from 'lib/ThemeContext'
 import {HITSLOP_10} from 'lib/constants'
+import {useLingui} from '@lingui/react'
+import {msg} from '@lingui/macro'
 
 const ESTIMATED_BTN_HEIGHT = 50
 const ESTIMATED_SEP_HEIGHT = 16
@@ -73,6 +75,8 @@ export function DropdownButton({
   bottomOffset = 0,
   accessibilityLabel,
 }: PropsWithChildren<DropdownButtonProps>) {
+  const {_} = useLingui()
+
   const ref1 = useRef<TouchableOpacity>(null)
   const ref2 = useRef<View>(null)
 
@@ -139,7 +143,9 @@ export function DropdownButton({
         hitSlop={HITSLOP_10}
         ref={ref1}
         accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel || `Opens ${numItems} options`}
+        accessibilityLabel={
+          accessibilityLabel || _(msg`Opens ${numItems} options`)
+        }
         accessibilityHint="">
         {children}
       </TouchableOpacity>
@@ -207,6 +213,7 @@ const DropdownItems = ({
 }: DropDownItemProps) => {
   const pal = usePalette('default')
   const theme = useTheme()
+  const {_} = useLingui()
   const dropDownBackgroundColor =
     theme.colorScheme === 'dark' ? pal.btn : pal.view
   const separatorColor =
@@ -224,8 +231,7 @@ const DropdownItems = ({
       {/* This TouchableWithoutFeedback renders the background so if the user clicks outside, the dropdown closes */}
       <TouchableWithoutFeedback
         onPress={onOuterPress}
-        accessibilityRole="button"
-        accessibilityLabel="Toggle dropdown"
+        accessibilityLabel={_(msg`Toggle dropdown`)}
         accessibilityHint="">
         <View style={[styles.bg]} />
       </TouchableWithoutFeedback>
@@ -245,7 +251,7 @@ const DropdownItems = ({
                 onPress={() => onPressItem(index)}
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
-                accessibilityHint={`Option ${index + 1} of ${numItems}`}>
+                accessibilityHint={_(msg`Option ${index + 1} of ${numItems}`)}>
                 {item.icon && (
                   <FontAwesomeIcon
                     style={styles.icon}
@@ -319,9 +325,12 @@ const styles = StyleSheet.create({
   icon: {
     marginLeft: 2,
     marginRight: 8,
+    flexShrink: 0,
   },
   label: {
     fontSize: 18,
+    flexShrink: 1,
+    flexGrow: 1,
   },
   separator: {
     borderTopWidth: 1,

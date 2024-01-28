@@ -1,18 +1,19 @@
 /* eslint-env detox/detox */
 
-import {openApp, login, createServer, sleep} from '../util'
+import {describe, beforeAll, it} from '@jest/globals'
+import {expect} from 'detox'
+import {openApp, loginAsAlice, createServer, sleep} from '../util'
 
 describe('Composer', () => {
-  let service: string
   beforeAll(async () => {
-    service = await createServer('?users')
+    await createServer('?users')
     await openApp({
       permissions: {notifications: 'YES', medialibrary: 'YES', photos: 'YES'},
     })
   })
 
   it('Login', async () => {
-    await login(service, 'alice', 'hunter2')
+    await loginAsAlice()
     await element(by.id('homeScreenFeedTabs-Following')).tap()
   })
 
@@ -46,6 +47,8 @@ describe('Composer', () => {
   })
 
   it('Reply text only', async () => {
+    await element(by.id('e2eRefreshHome')).tap()
+
     const post = by.id('feedItem-by-alice.test')
     await element(by.id('replyBtn').withAncestor(post)).atIndex(0).tap()
     await element(by.id('composerTextInput')).typeText('Reply text only')

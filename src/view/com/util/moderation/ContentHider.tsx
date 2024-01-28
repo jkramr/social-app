@@ -1,110 +1,145 @@
 import React from 'react'
 import {Pressable, StyleProp, StyleSheet, View, ViewStyle} from 'react-native'
+import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome'
 import {usePalette} from 'lib/hooks/usePalette'
+import {ModerationUI, PostModeration} from '@atproto/api'
 import {Text} from '../text/Text'
-import {addStyle} from 'lib/styles'
-import {ModerationBehavior, ModerationBehaviorCode} from 'lib/labeling/types'
+import {ShieldExclamation} from 'lib/icons'
+import {describeModerationCause} from 'lib/moderation'
+import {useLingui} from '@lingui/react'
+import {msg, Trans} from '@lingui/macro'
+import {useModalControls} from '#/state/modals'
+import {isPostMediaBlurred} from 'lib/moderation'
 
 export function ContentHider({
   testID,
   moderation,
+  moderationDecisions,
+  ignoreMute,
+  ignoreQuoteDecisions,
   style,
-  containerStyle,
+  childContainerStyle,
   children,
 }: React.PropsWithChildren<{
   testID?: string
-  moderation: ModerationBehavior
+  moderation: ModerationUI
+  moderationDecisions?: PostModeration['decisions']
+  ignoreMute?: boolean
+  ignoreQuoteDecisions?: boolean
   style?: StyleProp<ViewStyle>
-  containerStyle?: StyleProp<ViewStyle>
+  childContainerStyle?: StyleProp<ViewStyle>
 }>) {
   const pal = usePalette('default')
+  const {_} = useLingui()
   const [override, setOverride] = React.useState(false)
-  const onPressShow = React.useCallback(() => {
-    setOverride(true)
-  }, [setOverride])
-  const onPressHide = React.useCallback(() => {
-    setOverride(false)
-  }, [setOverride])
+  const {openModal} = useModalControls()
 
   if (
-    moderation.behavior === ModerationBehaviorCode.Show ||
-    moderation.behavior === ModerationBehaviorCode.Warn ||
-    moderation.behavior === ModerationBehaviorCode.WarnImages
+    !moderation.blur ||
+    (ignoreMute && moderation.cause?.type === 'muted') ||
+    shouldIgnoreQuote(moderationDecisions, ignoreQuoteDecisions)
   ) {
     return (
-      <View testID={testID} style={style}>
+      <View testID={testID} style={[styles.outer, style]}>
         {children}
       </View>
     )
   }
 
-  if (moderation.behavior === ModerationBehaviorCode.Hide) {
-    return null
-  }
-
+  const isMute = moderation.cause?.type === 'muted'
+  const desc = describeModerationCause(moderation.cause, 'content')
   return (
-    <View style={[styles.container, pal.view, pal.border, containerStyle]}>
+    <View testID={testID} style={[styles.outer, style]}>
       <Pressable
-        onPress={override ? onPressHide : onPressShow}
-        accessibilityLabel={override ? 'Hide post' : 'Show post'}
-        // TODO: The text labelling should be split up so controls have unique roles
+        onPress={() => {
+          if (!moderation.noOverride) {
+            setOverride(v => !v)
+          } else {
+            openModal({
+              name: 'moderation-details',
+              context: 'content',
+              moderation,
+            })
+          }
+        }}
+        accessibilityRole="button"
         accessibilityHint={
-          override
-            ? 'Re-hide post'
-            : 'Shows post hidden based on your moderation settings'
+          override ? _(msg`Hide the content`) : _(msg`Show the content`)
         }
+        accessibilityLabel=""
         style={[
-          styles.description,
-          pal.viewLight,
-          override && styles.descriptionOpen,
+          styles.cover,
+          moderation.noOverride
+            ? {borderWidth: 1, borderColor: pal.colors.borderDark}
+            : pal.viewLight,
         ]}>
-        <Text type="md" style={pal.textLight}>
-          {moderation.reason || 'Content warning'}
+        <Pressable
+          onPress={() => {
+            openModal({
+              name: 'moderation-details',
+              context: 'content',
+              moderation,
+            })
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={_(msg`Learn more about this warning`)}
+          accessibilityHint="">
+          {isMute ? (
+            <FontAwesomeIcon
+              icon={['far', 'eye-slash']}
+              size={18}
+              color={pal.colors.textLight}
+            />
+          ) : (
+            <ShieldExclamation size={18} style={pal.textLight} />
+          )}
+        </Pressable>
+        <Text type="md" style={[pal.text, {flex: 1}]} numberOfLines={2}>
+          {desc.name}
         </Text>
         <View style={styles.showBtn}>
-          <Text type="md-medium" style={pal.link}>
-            {override ? 'Hide' : 'Show'}
+          <Text type="lg" style={pal.link}>
+            {moderation.noOverride ? (
+              <Trans>Learn more</Trans>
+            ) : override ? (
+              <Trans>Hide</Trans>
+            ) : (
+              <Trans>Show</Trans>
+            )}
           </Text>
         </View>
       </Pressable>
-      {override && (
-        <View style={[styles.childrenContainer, pal.border]}>
-          <View testID={testID} style={addStyle(style, styles.child)}>
-            {children}
-          </View>
-        </View>
-      )}
+      {override && <View style={childContainerStyle}>{children}</View>}
     </View>
   )
 }
 
+function shouldIgnoreQuote(
+  decisions: PostModeration['decisions'] | undefined,
+  ignore: boolean | undefined,
+): boolean {
+  if (!decisions || !ignore) {
+    return false
+  }
+  return !isPostMediaBlurred(decisions)
+}
+
 const styles = StyleSheet.create({
-  container: {
-    marginBottom: 10,
-    borderWidth: 1,
-    borderRadius: 12,
+  outer: {
+    overflow: 'hidden',
   },
-  description: {
+  cover: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    borderRadius: 8,
+    marginTop: 4,
     paddingVertical: 14,
     paddingLeft: 14,
     paddingRight: 18,
-    borderRadius: 12,
-  },
-  descriptionOpen: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-  },
-  icon: {
-    marginRight: 10,
   },
   showBtn: {
     marginLeft: 'auto',
+    alignSelf: 'center',
   },
-  childrenContainer: {
-    paddingHorizontal: 12,
-    paddingTop: 8,
-  },
-  child: {},
 })

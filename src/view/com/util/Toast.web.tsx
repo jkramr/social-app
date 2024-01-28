@@ -4,12 +4,17 @@
 
 import React, {useState, useEffect} from 'react'
 import {StyleSheet, Text, View} from 'react-native'
-import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome'
+import {
+  FontAwesomeIcon,
+  FontAwesomeIconStyle,
+  Props as FontAwesomeProps,
+} from '@fortawesome/react-native-fontawesome'
 
 const DURATION = 3500
 
 interface ActiveToast {
   text: string
+  icon: FontAwesomeProps['icon']
 }
 type GlobalSetActiveToast = (_activeToast: ActiveToast | undefined) => void
 
@@ -32,7 +37,11 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({}) => {
     <>
       {activeToast && (
         <View style={styles.container}>
-          <FontAwesomeIcon icon="check" size={24} style={styles.icon} />
+          <FontAwesomeIcon
+            icon={activeToast.icon}
+            size={24}
+            style={styles.icon as FontAwesomeIconStyle}
+          />
           <Text style={styles.text}>{activeToast.text}</Text>
         </View>
       )}
@@ -42,11 +51,12 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({}) => {
 
 // methods
 // =
-export function show(text: string) {
+
+export function show(text: string, icon: FontAwesomeProps['icon'] = 'check') {
   if (toastTimeout) {
     clearTimeout(toastTimeout)
   }
-  globalSetActiveToast?.({text})
+  globalSetActiveToast?.({text, icon})
   toastTimeout = setTimeout(() => {
     globalSetActiveToast?.(undefined)
   }, DURATION)
@@ -54,9 +64,11 @@ export function show(text: string) {
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
+    // @ts-ignore web only
+    position: 'fixed',
     left: 20,
     bottom: 20,
+    // @ts-ignore web only
     width: 'calc(100% - 40px)',
     maxWidth: 350,
     padding: 20,

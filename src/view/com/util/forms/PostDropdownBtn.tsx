@@ -1,42 +1,126 @@
-import React from 'react'
+import React, {memo} from 'react'
+import {Linking, StyleProp, View, ViewStyle} from 'react-native'
+import Clipboard from '@react-native-clipboard/clipboard'
+import {FontAwesomeIcon} from '@fortawesome/react-native-fontawesome'
+import {
+  AppBskyActorDefs,
+  AppBskyFeedPost,
+  AtUri,
+  RichText as RichTextAPI,
+} from '@atproto/api'
 import {toShareUrl} from 'lib/strings/url-helpers'
-import {useStores} from 'state/index'
+import {useTheme} from 'lib/ThemeContext'
 import {shareUrl} from 'lib/sharing'
 import {
   NativeDropdown,
   DropdownItem as NativeDropdownItem,
 } from './NativeDropdown'
+import * as Toast from '../Toast'
 import {EventStopper} from '../EventStopper'
+import {useModalControls} from '#/state/modals'
+import {makeProfileLink} from '#/lib/routes/links'
+import {getTranslatorLink} from '#/locale/helpers'
+import {usePostDeleteMutation} from '#/state/queries/post'
+import {useMutedThreads, useToggleThreadMute} from '#/state/muted-threads'
+import {useLanguagePrefs} from '#/state/preferences'
+import {useHiddenPosts, useHiddenPostsApi} from '#/state/preferences'
+import {logger} from '#/logger'
+import {msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
+import {useSession} from '#/state/session'
+import {isWeb} from '#/platform/detection'
+import {richTextToString} from '#/lib/strings/rich-text-helpers'
 
-export function PostDropdownBtn({
+let PostDropdownBtn = ({
   testID,
-  itemUri,
-  itemCid,
-  itemHref,
-  isAuthor,
-  isThreadMuted,
-  onCopyPostText,
-  onOpenTranslate,
-  onToggleThreadMute,
-  onDeletePost,
+  postAuthor,
+  postCid,
+  postUri,
+  record,
+  richText,
+  style,
+  showAppealLabelItem,
 }: {
   testID: string
-  itemUri: string
-  itemCid: string
-  itemHref: string
-  itemTitle: string
-  isAuthor: boolean
-  isThreadMuted: boolean
-  onCopyPostText: () => void
-  onOpenTranslate: () => void
-  onToggleThreadMute: () => void
-  onDeletePost: () => void
-}) {
-  const store = useStores()
+  postAuthor: AppBskyActorDefs.ProfileViewBasic
+  postCid: string
+  postUri: string
+  record: AppBskyFeedPost.Record
+  richText: RichTextAPI
+  style?: StyleProp<ViewStyle>
+  showAppealLabelItem?: boolean
+}): React.ReactNode => {
+  const {hasSession, currentAccount} = useSession()
+  const theme = useTheme()
+  const {_} = useLingui()
+  const defaultCtrlColor = theme.palette.default.postCtrl
+  const {openModal} = useModalControls()
+  const langPrefs = useLanguagePrefs()
+  const mutedThreads = useMutedThreads()
+  const toggleThreadMute = useToggleThreadMute()
+  const postDeleteMutation = usePostDeleteMutation()
+  const hiddenPosts = useHiddenPosts()
+  const {hidePost} = useHiddenPostsApi()
+
+  const rootUri = record.reply?.root?.uri || postUri
+  const isThreadMuted = mutedThreads.includes(rootUri)
+  const isPostHidden = hiddenPosts && hiddenPosts.includes(postUri)
+  const isAuthor = postAuthor.did === currentAccount?.did
+  const href = React.useMemo(() => {
+    const urip = new AtUri(postUri)
+    return makeProfileLink(postAuthor, 'post', urip.rkey)
+  }, [postUri, postAuthor])
+
+  const translatorUrl = getTranslatorLink(
+    record.text,
+    langPrefs.primaryLanguage,
+  )
+
+  const onDeletePost = React.useCallback(() => {
+    postDeleteMutation.mutateAsync({uri: postUri}).then(
+      () => {
+        Toast.show(_(msg`Post deleted`))
+      },
+      e => {
+        logger.error('Failed to delete post', {message: e})
+        Toast.show(_(msg`Failed to delete post, please try again`))
+      },
+    )
+  }, [postUri, postDeleteMutation, _])
+
+  const onToggleThreadMute = React.useCallback(() => {
+    try {
+      const muted = toggleThreadMute(rootUri)
+      if (muted) {
+        Toast.show(
+          _(msg`You will no longer receive notifications for this thread`),
+        )
+      } else {
+        Toast.show(_(msg`You will now receive notifications for this thread`))
+      }
+    } catch (e) {
+      logger.error('Failed to toggle thread mute', {message: e})
+    }
+  }, [rootUri, toggleThreadMute, _])
+
+  const onCopyPostText = React.useCallback(() => {
+    const str = richTextToString(richText, true)
+
+    Clipboard.setString(str)
+    Toast.show(_(msg`Copied to clipboard`))
+  }, [_, richText])
+
+  const onOpenTranslate = React.useCallback(() => {
+    Linking.openURL(translatorUrl)
+  }, [translatorUrl])
+
+  const onHidePost = React.useCallback(() => {
+    hidePost({uri: postUri})
+  }, [postUri, hidePost])
 
   const dropdownItems: NativeDropdownItem[] = [
     {
-      label: 'Translate',
+      label: _(msg`Translate`),
       onPress() {
         onOpenTranslate()
       },
@@ -50,7 +134,7 @@ export function PostDropdownBtn({
       },
     },
     {
-      label: 'Copy post text',
+      label: _(msg`Copy post text`),
       onPress() {
         onCopyPostText()
       },
@@ -64,9 +148,9 @@ export function PostDropdownBtn({
       },
     },
     {
-      label: 'Share',
+      label: isWeb ? _(msg`Copy link to post`) : _(msg`Share`),
       onPress() {
-        const url = toShareUrl(itemHref)
+        const url = toShareUrl(href)
         shareUrl(url)
       },
       testID: 'postDropdownShareBtn',
@@ -78,11 +162,11 @@ export function PostDropdownBtn({
         web: 'share',
       },
     },
-    {
+    hasSession && {
       label: 'separator',
     },
-    {
-      label: isThreadMuted ? 'Unmute thread' : 'Mute thread',
+    hasSession && {
+      label: isThreadMuted ? _(msg`Unmute thread`) : _(msg`Mute thread`),
       onPress() {
         onToggleThreadMute()
       },
@@ -95,37 +179,56 @@ export function PostDropdownBtn({
         web: 'comment-slash',
       },
     },
-    {
-      label: 'separator',
-    },
-    {
-      label: 'Report post',
-      onPress() {
-        store.shell.openModal({
-          name: 'report-post',
-          postUri: itemUri,
-          postCid: itemCid,
-        })
-      },
-      testID: 'postDropdownReportBtn',
-      icon: {
-        ios: {
-          name: 'exclamationmark.triangle',
+    hasSession &&
+      !isAuthor &&
+      !isPostHidden && {
+        label: _(msg`Hide post`),
+        onPress() {
+          openModal({
+            name: 'confirm',
+            title: _(msg`Hide this post?`),
+            message: _(msg`This will hide this post from your feeds.`),
+            onPressConfirm: onHidePost,
+          })
         },
-        android: 'ic_menu_report_image',
-        web: 'circle-exclamation',
+        testID: 'postDropdownHideBtn',
+        icon: {
+          ios: {
+            name: 'eye.slash',
+          },
+          android: 'ic_menu_delete',
+          web: ['far', 'eye-slash'],
+        },
       },
-    },
-    isAuthor && {
+    {
       label: 'separator',
     },
+    !isAuthor &&
+      hasSession && {
+        label: _(msg`Report post`),
+        onPress() {
+          openModal({
+            name: 'report',
+            uri: postUri,
+            cid: postCid,
+          })
+        },
+        testID: 'postDropdownReportBtn',
+        icon: {
+          ios: {
+            name: 'exclamationmark.triangle',
+          },
+          android: 'ic_menu_report_image',
+          web: 'circle-exclamation',
+        },
+      },
     isAuthor && {
-      label: 'Delete post',
+      label: _(msg`Delete post`),
       onPress() {
-        store.shell.openModal({
+        openModal({
           name: 'confirm',
-          title: 'Delete this post?',
-          message: 'Are you sure? This can not be undone.',
+          title: _(msg`Delete this post?`),
+          message: _(msg`Are you sure? This cannot be undone.`),
           onPressConfirm: onDeletePost,
         })
       },
@@ -138,6 +241,23 @@ export function PostDropdownBtn({
         web: ['far', 'trash-can'],
       },
     },
+    showAppealLabelItem && {
+      label: 'separator',
+    },
+    showAppealLabelItem && {
+      label: _(msg`Appeal content warning`),
+      onPress() {
+        openModal({name: 'appeal-label', uri: postUri, cid: postCid})
+      },
+      testID: 'postDropdownAppealBtn',
+      icon: {
+        ios: {
+          name: 'exclamationmark.triangle',
+        },
+        android: 'ic_menu_report_image',
+        web: 'circle-exclamation',
+      },
+    },
   ].filter(Boolean) as NativeDropdownItem[]
 
   return (
@@ -145,9 +265,15 @@ export function PostDropdownBtn({
       <NativeDropdown
         testID={testID}
         items={dropdownItems}
-        accessibilityLabel="More post options"
-        accessibilityHint=""
-      />
+        accessibilityLabel={_(msg`More post options`)}
+        accessibilityHint="">
+        <View style={style}>
+          <FontAwesomeIcon icon="ellipsis" size={20} color={defaultCtrlColor} />
+        </View>
+      </NativeDropdown>
     </EventStopper>
   )
 }
+
+PostDropdownBtn = memo(PostDropdownBtn)
+export {PostDropdownBtn}

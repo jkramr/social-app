@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	appbsky "github.com/bluesky-social/indigo/api/bsky"
-	cliutil "github.com/bluesky-social/indigo/cmd/gosky/util"
+	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/bluesky-social/indigo/util/cliutil"
 	"github.com/bluesky-social/indigo/xrpc"
 	"github.com/bluesky-social/social-app/bskyweb"
 
@@ -38,9 +38,7 @@ type Server struct {
 func serve(cctx *cli.Context) error {
 	debug := cctx.Bool("debug")
 	httpAddress := cctx.String("http-address")
-	pdsHost := cctx.String("pds-host")
-	atpHandle := cctx.String("handle")
-	atpPassword := cctx.String("password")
+	appviewHost := cctx.String("appview-host")
 	mailmodoAPIKey := cctx.String("mailmodo-api-key")
 	mailmodoListName := cctx.String("mailmodo-list-name")
 
@@ -50,27 +48,11 @@ func serve(cctx *cli.Context) error {
 	// Mailmodo client.
 	mailmodo := NewMailmodo(mailmodoAPIKey, mailmodoListName)
 
-	// create a new session
-	// TODO: does this work with no auth at all?
+	// create a new session (no auth)
 	xrpcc := &xrpc.Client{
 		Client: cliutil.NewHttpClient(),
-		Host:   pdsHost,
-		Auth: &xrpc.AuthInfo{
-			Handle: atpHandle,
-		},
+		Host:   appviewHost,
 	}
-
-	auth, err := comatproto.ServerCreateSession(context.TODO(), xrpcc, &comatproto.ServerCreateSession_Input{
-		Identifier: xrpcc.Auth.Handle,
-		Password:   atpPassword,
-	})
-	if err != nil {
-		return err
-	}
-	xrpcc.Auth.AccessJwt = auth.AccessJwt
-	xrpcc.Auth.RefreshJwt = auth.RefreshJwt
-	xrpcc.Auth.Did = auth.Did
-	xrpcc.Auth.Handle = auth.Handle
 
 	// httpd
 	var (
@@ -110,6 +92,11 @@ func serve(cctx *cli.Context) error {
 	}
 
 	e.HideBanner = true
+	e.Renderer = NewRenderer("templates/", &bskyweb.TemplateFS, debug)
+	e.HTTPErrorHandler = server.errorHandler
+
+	e.IPExtractor = echo.ExtractIPFromXFFHeader()
+
 	// SECURITY: Do not modify without due consideration.
 	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
 		ContentTypeNosniff: "nosniff",
@@ -125,8 +112,23 @@ func serve(cctx *cli.Context) error {
 			return strings.HasPrefix(c.Request().URL.Path, "/static")
 		},
 	}))
-	e.Renderer = NewRenderer("templates/", &bskyweb.TemplateFS, debug)
-	e.HTTPErrorHandler = server.errorHandler
+	e.Use(middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
+		Skipper: middleware.DefaultSkipper,
+		Store: middleware.NewRateLimiterMemoryStoreWithConfig(
+			middleware.RateLimiterMemoryStoreConfig{
+				Rate:      10,              // requests per second
+				Burst:     30,              // allow bursts
+				ExpiresIn: 3 * time.Minute, // garbage collect entries older than 3 minutes
+			},
+		),
+		IdentifierExtractor: func(ctx echo.Context) (string, error) {
+			id := ctx.RealIP()
+			return id, nil
+		},
+		DenyHandler: func(c echo.Context, identifier string, err error) error {
+			return c.String(http.StatusTooManyRequests, "Your request has been rate limited. Please try again later. Contact security@bsky.app if you believe this was a mistake.\n")
+		},
+	}))
 
 	// redirect trailing slash to non-trailing slash.
 	// all of our current endpoints have no trailing slash.
@@ -137,7 +139,6 @@ func serve(cctx *cli.Context) error {
 	//
 	// configure routes
 	//
-
 	// static files
 	staticHandler := http.FileServer(func() http.FileSystem {
 		if debug {
@@ -150,11 +151,28 @@ func serve(cctx *cli.Context) error {
 		}
 		return http.FS(fsys)
 	}())
+
 	e.GET("/robots.txt", echo.WrapHandler(staticHandler))
-	e.GET("/static/*", echo.WrapHandler(http.StripPrefix("/static/", staticHandler)))
+	e.GET("/ips-v4", echo.WrapHandler(staticHandler))
+	e.GET("/ips-v6", echo.WrapHandler(staticHandler))
 	e.GET("/.well-known/*", echo.WrapHandler(staticHandler))
 	e.GET("/security.txt", func(c echo.Context) error {
 		return c.Redirect(http.StatusMovedPermanently, "/.well-known/security.txt")
+	})
+	e.GET("/static/*", echo.WrapHandler(http.StripPrefix("/static/", staticHandler)), func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			path := c.Request().URL.Path
+			maxAge := 1 * (60 * 60) // default is 1 hour
+
+			// Cache javascript and images files for 1 week, which works because
+			// they're always versioned (e.g. /static/js/main.64c14927.js)
+			if strings.HasPrefix(path, "/static/js/") || strings.HasPrefix(path, "/static/images/") {
+				maxAge = 7 * (60 * 60 * 24) // 1 week
+			}
+
+			c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAge))
+			return next(c)
+		}
 	})
 
 	// home
@@ -162,16 +180,20 @@ func serve(cctx *cli.Context) error {
 
 	// generic routes
 	e.GET("/search", server.WebGeneric)
-	e.GET("/search/feeds", server.WebGeneric)
 	e.GET("/feeds", server.WebGeneric)
 	e.GET("/notifications", server.WebGeneric)
+	e.GET("/lists", server.WebGeneric)
 	e.GET("/moderation", server.WebGeneric)
-	e.GET("/moderation/mute-lists", server.WebGeneric)
+	e.GET("/moderation/modlists", server.WebGeneric)
 	e.GET("/moderation/muted-accounts", server.WebGeneric)
 	e.GET("/moderation/blocked-accounts", server.WebGeneric)
 	e.GET("/settings", server.WebGeneric)
+	e.GET("/settings/language", server.WebGeneric)
 	e.GET("/settings/app-passwords", server.WebGeneric)
+	e.GET("/settings/home-feed", server.WebGeneric)
 	e.GET("/settings/saved-feeds", server.WebGeneric)
+	e.GET("/settings/threads", server.WebGeneric)
+	e.GET("/settings/external-embeds", server.WebGeneric)
 	e.GET("/sys/debug", server.WebGeneric)
 	e.GET("/sys/log", server.WebGeneric)
 	e.GET("/support", server.WebGeneric)
@@ -187,6 +209,9 @@ func serve(cctx *cli.Context) error {
 	e.GET("/profile/:handle/lists/:rkey", server.WebGeneric)
 	e.GET("/profile/:handle/feed/:rkey", server.WebGeneric)
 	e.GET("/profile/:handle/feed/:rkey/liked-by", server.WebGeneric)
+
+	// profile RSS feed (DID not handle)
+	e.GET("/profile/:ident/rss", server.WebProfileRSS)
 
 	// post endpoints; only first populates info
 	e.GET("/profile/:handle/post/:rkey", server.WebPost)
@@ -265,56 +290,108 @@ func (srv *Server) WebHome(c echo.Context) error {
 }
 
 func (srv *Server) WebPost(c echo.Context) error {
+	ctx := c.Request().Context()
 	data := pongo2.Context{}
-	handle := c.Param("handle")
-	rkey := c.Param("rkey")
-	// sanity check argument
-	if len(handle) > 4 && len(handle) < 128 && len(rkey) > 0 {
-		ctx := c.Request().Context()
-		// requires two fetches: first fetch profile (!)
-		pv, err := appbsky.ActorGetProfile(ctx, srv.xrpcc, handle)
-		if err != nil {
-			log.Warnf("failed to fetch handle: %s\t%v", handle, err)
-		} else {
-			did := pv.Did
-			data["did"] = did
 
-			// then fetch the post thread (with extra context)
-			uri := fmt.Sprintf("at://%s/app.bsky.feed.post/%s", did, rkey)
-			tpv, err := appbsky.FeedGetPostThread(ctx, srv.xrpcc, 1, uri)
-			if err != nil {
-				log.Warnf("failed to fetch post: %s\t%v", uri, err)
-			} else {
-				req := c.Request()
-				postView := tpv.Thread.FeedDefs_ThreadViewPost.Post
-				data["postView"] = postView
-				data["requestURI"] = fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
-				if postView.Embed != nil && postView.Embed.EmbedImages_View != nil {
-					data["imgThumbUrl"] = postView.Embed.EmbedImages_View.Images[0].Thumb
-				}
-			}
-		}
-
+	// sanity check arguments. don't 4xx, just let app handle if not expected format
+	rkeyParam := c.Param("rkey")
+	rkey, err := syntax.ParseRecordKey(rkeyParam)
+	if err != nil {
+		return c.Render(http.StatusOK, "post.html", data)
 	}
+	handleParam := c.Param("handle")
+	handle, err := syntax.ParseHandle(handleParam)
+	if err != nil {
+		return c.Render(http.StatusOK, "post.html", data)
+	}
+	handle = handle.Normalize()
+
+	// requires two fetches: first fetch profile (!)
+	pv, err := appbsky.ActorGetProfile(ctx, srv.xrpcc, handle.String())
+	if err != nil {
+		log.Warnf("failed to fetch handle: %s\t%v", handle, err)
+		return c.Render(http.StatusOK, "post.html", data)
+	}
+	unauthedViewingOkay := true
+	for _, label := range pv.Labels {
+		if label.Src == pv.Did && label.Val == "!no-unauthenticated" {
+			unauthedViewingOkay = false
+		}
+	}
+
+	if !unauthedViewingOkay {
+		return c.Render(http.StatusOK, "post.html", data)
+	}
+	did := pv.Did
+	data["did"] = did
+
+	// then fetch the post thread (with extra context)
+	uri := fmt.Sprintf("at://%s/app.bsky.feed.post/%s", did, rkey)
+	tpv, err := appbsky.FeedGetPostThread(ctx, srv.xrpcc, 1, 0, uri)
+	if err != nil {
+		log.Warnf("failed to fetch post: %s\t%v", uri, err)
+		return c.Render(http.StatusOK, "post.html", data)
+	}
+	req := c.Request()
+	postView := tpv.Thread.FeedDefs_ThreadViewPost.Post
+	data["postView"] = postView
+	data["requestURI"] = fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
+	if postView.Embed != nil {
+		if postView.Embed.EmbedImages_View != nil {
+			var thumbUrls []string
+			for i := range postView.Embed.EmbedImages_View.Images {
+				thumbUrls = append(thumbUrls, postView.Embed.EmbedImages_View.Images[i].Thumb)
+			}
+			data["imgThumbUrls"] = thumbUrls
+		} else if postView.Embed.EmbedRecordWithMedia_View != nil && postView.Embed.EmbedRecordWithMedia_View.Media != nil && postView.Embed.EmbedRecordWithMedia_View.Media.EmbedImages_View != nil {
+			var thumbUrls []string
+			for i := range postView.Embed.EmbedRecordWithMedia_View.Media.EmbedImages_View.Images {
+				thumbUrls = append(thumbUrls, postView.Embed.EmbedRecordWithMedia_View.Media.EmbedImages_View.Images[i].Thumb)
+			}
+			data["imgThumbUrls"] = thumbUrls
+		}
+	}
+
+	if postView.Record != nil {
+		postRecord, ok := postView.Record.Val.(*appbsky.FeedPost)
+		if ok {
+			data["postText"] = ExpandPostText(postRecord)
+		}
+	}
+
 	return c.Render(http.StatusOK, "post.html", data)
 }
 
 func (srv *Server) WebProfile(c echo.Context) error {
+	ctx := c.Request().Context()
 	data := pongo2.Context{}
-	handle := c.Param("handle")
-	// sanity check argument
-	if len(handle) > 4 && len(handle) < 128 {
-		ctx := c.Request().Context()
-		pv, err := appbsky.ActorGetProfile(ctx, srv.xrpcc, handle)
-		if err != nil {
-			log.Warnf("failed to fetch handle: %s\t%v", handle, err)
-		} else {
-			req := c.Request()
-			data["profileView"] = pv
-			data["requestURI"] = fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
+
+	// sanity check arguments. don't 4xx, just let app handle if not expected format
+	handleParam := c.Param("handle")
+	handle, err := syntax.ParseHandle(handleParam)
+	if err != nil {
+		return c.Render(http.StatusOK, "profile.html", data)
+	}
+	handle = handle.Normalize()
+
+	pv, err := appbsky.ActorGetProfile(ctx, srv.xrpcc, handle.String())
+	if err != nil {
+		log.Warnf("failed to fetch handle: %s\t%v", handle, err)
+		return c.Render(http.StatusOK, "profile.html", data)
+	}
+	unauthedViewingOkay := true
+	for _, label := range pv.Labels {
+		if label.Src == pv.Did && label.Val == "!no-unauthenticated" {
+			unauthedViewingOkay = false
 		}
 	}
-
+	if !unauthedViewingOkay {
+		return c.Render(http.StatusOK, "profile.html", data)
+	}
+	req := c.Request()
+	data["profileView"] = pv
+	data["requestURI"] = fmt.Sprintf("https://%s%s", req.Host, req.URL.Path)
+	data["requestHost"] = req.Host
 	return c.Render(http.StatusOK, "profile.html", data)
 }
 

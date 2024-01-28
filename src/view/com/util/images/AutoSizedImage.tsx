@@ -1,23 +1,19 @@
 import React from 'react'
-import {
-  StyleProp,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-  ViewStyle,
-} from 'react-native'
+import {StyleProp, StyleSheet, Pressable, View, ViewStyle} from 'react-native'
 import {Image} from 'expo-image'
 import {clamp} from 'lib/numbers'
-import {useStores} from 'state/index'
 import {Dimensions} from 'lib/media/types'
+import * as imageSizes from 'lib/media/image-sizes'
+import {msg} from '@lingui/macro'
+import {useLingui} from '@lingui/react'
 
-export const DELAY_PRESS_IN = 500
 const MIN_ASPECT_RATIO = 0.33 // 1/3
-const MAX_ASPECT_RATIO = 5 // 5/1
+const MAX_ASPECT_RATIO = 10 // 10/1
 
 interface Props {
   alt?: string
   uri: string
+  dimensionsHint?: Dimensions
   onPress?: () => void
   onLongPress?: () => void
   onPressIn?: () => void
@@ -28,15 +24,16 @@ interface Props {
 export function AutoSizedImage({
   alt,
   uri,
+  dimensionsHint,
   onPress,
   onLongPress,
   onPressIn,
   style,
   children = null,
 }: Props) {
-  const store = useStores()
+  const {_} = useLingui()
   const [dim, setDim] = React.useState<Dimensions | undefined>(
-    store.imageSizes.get(uri),
+    dimensionsHint || imageSizes.get(uri),
   )
   const [aspectRatio, setAspectRatio] = React.useState<number>(
     dim ? calc(dim) : 1,
@@ -46,35 +43,34 @@ export function AutoSizedImage({
     if (dim) {
       return
     }
-    store.imageSizes.fetch(uri).then(newDim => {
+    imageSizes.fetch(uri).then(newDim => {
       if (aborted) {
         return
       }
       setDim(newDim)
       setAspectRatio(calc(newDim))
     })
-  }, [dim, setDim, setAspectRatio, store, uri])
+  }, [dim, setDim, setAspectRatio, uri])
 
   if (onPress || onLongPress || onPressIn) {
     return (
-      <TouchableOpacity
+      // disable a11y rule because in this case we want the tags on the image (#1640)
+      // eslint-disable-next-line react-native-a11y/has-valid-accessibility-descriptors
+      <Pressable
         onPress={onPress}
         onLongPress={onLongPress}
         onPressIn={onPressIn}
-        delayPressIn={DELAY_PRESS_IN}
-        style={[styles.container, style]}
-        accessible={true}
-        accessibilityRole="button"
-        accessibilityLabel={alt || 'Image'}
-        accessibilityHint="Tap to view fully">
+        style={[styles.container, style]}>
         <Image
           style={[styles.image, {aspectRatio}]}
           source={uri}
-          accessible={false} // Must set for `accessibilityLabel` to work
+          accessible={true} // Must set for `accessibilityLabel` to work
           accessibilityIgnoresInvertColors
+          accessibilityLabel={alt}
+          accessibilityHint={_(msg`Tap to view fully`)}
         />
         {children}
-      </TouchableOpacity>
+      </Pressable>
     )
   }
 
